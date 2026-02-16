@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const THEME_KEY = "mdEditorTheme";
+  const THEME_KEY = "ilirTheme";
   const CONTROLS_WIDTH_KEY = "mdEditorControlsWidth";
   const LAYERS_PANEL_WIDTH_KEY = "mdEditorLayersPanelWidth";
   const DRAFT_KEY = "mdEditorDraft";
