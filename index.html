@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Markdown Editor</title>
+  <link rel="icon" id="favicon" href="favicon.svg" type="image/svg+xml" />
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('mdEditorTheme');
+        var fav = document.getElementById('favicon');
+        if (t === 'light' && fav) fav.href = 'favicon-light.svg';
+        else if (t === 'dark' && fav) fav.href = 'favicon.svg';
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme-light.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Left panel: File & options -->
+    <aside class="controls" id="controlsPanel" aria-label="File and document options">
+      <div class="panel-header">
+        <span class="panel-title">File</span>
+        <button type="button" id="btnCloseFilePanel" class="panel-close-btn" title="Close panel" aria-label="Close File panel"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+      </div>
+
+      <details class="control-panel" open>
+        <summary class="panel-summary">Document</summary>
+        <div class="panel-content doc-panel">
+          <div class="panel-section doc-filename-section">
+            <span class="doc-export-heading">Document name</span>
+            <p class="doc-filename-hint">Used when saving or exporting</p>
+            <input type="text" id="saveFilename" placeholder="document" value="document" class="input-text doc-filename-input" />
+          </div>
+
+          <div class="panel-section doc-actions">
+            <button type="button" id="btnOpen" class="btn-panel doc-action-btn" title="Open a markdown file">
+              <span class="material-symbols-outlined doc-action-icon" aria-hidden="true">folder_open</span>
+              <span class="doc-action-text">Open file</span>
+            </button>
+            <input type="file" id="openFile" accept=".md,.markdown,text/markdown,text/plain" class="doc-file-hidden" aria-label="Open file" />
+            <button type="button" id="btnSave" class="btn-panel doc-action-btn btn-primary" title="Save as markdown">
+              <span class="material-symbols-outlined doc-action-icon" aria-hidden="true">save</span>
+              <span class="doc-action-text">Save as .md</span>
+            </button>
+            <button type="button" id="btnNew" class="btn-panel doc-action-btn" title="Start a new document">
+              <span class="material-symbols-outlined doc-action-icon" aria-hidden="true">add_circle_outline</span>
+              <span class="doc-action-text">New document</span>
+            </button>
+          </div>
+
+          <div class="panel-section doc-export-section">
+            <p class="doc-export-heading">Export</p>
+            <div class="doc-export-group">
+              <span class="doc-export-group-label">Download as file</span>
+              <div class="doc-export-actions">
+                <button type="button" id="btnExportHtml" class="btn-panel doc-export-btn" title="Export as HTML">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">code</span>
+                  <span class="doc-export-btn-text">HTML</span>
+                </button>
+                <button type="button" id="btnExportPdf" class="btn-panel doc-export-btn" title="Export as PDF">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">picture_as_pdf</span>
+                  <span class="doc-export-btn-text">PDF</span>
+                </button>
+                <button type="button" id="btnExportWord" class="btn-panel doc-export-btn" title="Export as Word">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">description</span>
+                  <span class="doc-export-btn-text">Word</span>
+                </button>
+              </div>
+            </div>
+            <div class="doc-export-group">
+              <span class="doc-export-group-label">Copy &amp; print</span>
+              <div class="doc-export-actions">
+                <button type="button" id="btnCopyHtml" class="btn-panel doc-export-btn" title="Copy rendered HTML to clipboard">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">content_copy</span>
+                  <span class="doc-export-btn-text">Copy as HTML</span>
+                </button>
+                <button type="button" id="btnCopyMd" class="btn-panel doc-export-btn" title="Copy raw markdown to clipboard">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">content_copy</span>
+                  <span class="doc-export-btn-text">Copy as Markdown</span>
+                </button>
+                <button type="button" id="btnPrint" class="btn-panel doc-export-btn" title="Print preview">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">print</span>
+                  <span class="doc-export-btn-text">Print</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="control-panel">
+        <summary class="panel-summary">Settings</summary>
+        <div class="panel-content settings-panel-content">
+          <p class="settings-intro">Drag dividers between panels to resize. Theme is in the footer.</p>
+
+          <section class="settings-block" aria-labelledby="settings-draft-heading">
+            <h3 id="settings-draft-heading" class="settings-block-title">Draft</h3>
+            <label class="settings-row">
+              <input type="checkbox" id="settingAutoSaveDraft" />
+              <span class="settings-row-label">Auto-save draft</span>
+            </label>
+            <p class="settings-block-hint">Saves to browser ~2s after typing. Reload to restore.</p>
+          </section>
+
+          <section class="settings-block" aria-labelledby="settings-editor-heading">
+            <h3 id="settings-editor-heading" class="settings-block-title">Editor</h3>
+            <div class="settings-row settings-row-with-input">
+              <span class="settings-row-label">Font size</span>
+              <input type="number" id="settingFontSize" class="input-num settings-input-num" min="12" max="24" value="14" aria-label="Editor font size" />
+            </div>
+            <label class="settings-row">
+              <input type="checkbox" id="settingReducedMotion" />
+              <span class="settings-row-label">Reduced motion</span>
+            </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingFocusMode" />
+              <span class="settings-row-label">Focus mode</span>
+            </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingZenMode" />
+              <span class="settings-row-label">Zen mode</span>
+            </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingPreviewLight" />
+              <span class="settings-row-label">Preview always light</span>
+            </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingScrollLock" />
+              <span class="settings-row-label">Lock scroll (split)</span>
+            </label>
+          </section>
+
+          <section class="settings-block" aria-labelledby="settings-goal-heading">
+            <h3 id="settings-goal-heading" class="settings-block-title">Word count goal</h3>
+            <div class="settings-row settings-row-with-input">
+              <span class="settings-row-label">Goal</span>
+              <input type="number" id="settingWordGoal" class="input-num settings-input-num" min="0" placeholder="0 = off" aria-label="Word count goal" />
+            </div>
+          </section>
+
+          <section class="settings-block" aria-labelledby="settings-shortcuts-heading">
+            <h3 id="settings-shortcuts-heading" class="settings-block-title">Shortcuts</h3>
+            <ul class="shortcuts-list" aria-labelledby="settings-shortcuts-heading">
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>S</kbd> Save</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>N</kbd> New</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>O</kbd> Open</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>F</kbd> Find</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>H</kbd> Replace</li>
+            </ul>
+          </section>
+
+          <div class="settings-footer">
+            <a id="openInNewTabLink" href="#" target="_blank" rel="noopener" class="settings-link">Open in new tab</a>
+          </div>
+        </div>
+      </details>
+
+      <details class="control-panel">
+        <summary class="panel-summary">Help</summary>
+        <div class="panel-content help-syntax">
+          <span class="panel-label">Headings</span>
+          <span class="panel-hint"># H1<br>## H2<br>### H3</span>
+          <span class="panel-label">Text style</span>
+          <span class="panel-hint">**bold** · *italic* · ~~strikethrough~~ · `code`</span>
+          <span class="panel-label">Link</span>
+          <span class="panel-hint">[text](https://url)</span>
+          <span class="panel-label">Image</span>
+          <span class="panel-hint">![alt](https://image-url)</span>
+          <span class="panel-label">Lists</span>
+          <span class="panel-hint">- bullet<br>1. numbered<br>- [ ] task<br>- [x] done</span>
+          <span class="panel-label">Blockquote · Rule</span>
+          <span class="panel-hint">&gt; quote<br>--- (horizontal line)</span>
+          <span class="panel-label">Table</span>
+          <span class="panel-hint">| A | B |<br>| --- | --- |<br>| 1 | 2 |</span>
+          <span class="panel-label">Shortcuts</span>
+          <span class="panel-hint">Ctrl+B bold · Ctrl+I italic · Ctrl+K link · Ctrl+Shift+V paste plain</span>
+        </div>
+      </details>
+
+      <div class="controls-footer" role="group" aria-label="Interface theme">
+        <div class="theme-row">
+          <span class="theme-switch-label">Dark</span>
+          <button type="button" id="themeSwitch" class="theme-switch" role="switch" aria-checked="false" aria-label="Use light theme">
+            <span class="theme-switch-track">
+              <span class="theme-switch-thumb"></span>
+            </span>
+          </button>
+          <span class="theme-switch-label">Light</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="panel-resizer" id="resizerLeft" role="separator" aria-orientation="vertical" title="Drag to resize panel"></div>
+
+    <!-- Center: Editor + Preview -->
+    <main class="editor-wrapper" id="editorWrapper">
+      <div class="editor-toolbar">
+        <div class="editor-toolbar-mobile" role="group" aria-label="Panels">
+          <button type="button" id="btnToggleFile" class="editor-toolbar-btn" title="File" aria-label="Open File panel"><span class="material-symbols-outlined" aria-hidden="true">folder_open</span></button>
+        </div>
+        <div class="view-mode-group" role="group" aria-label="View mode">
+          <button type="button" id="btnEditOnly" class="view-mode-btn" title="Edit only"><span class="material-symbols-outlined view-mode-icon" aria-hidden="true">edit_note</span><span class="view-mode-label">Edit</span></button>
+          <button type="button" id="btnSplit" class="view-mode-btn active" title="Split view"><span class="material-symbols-outlined view-mode-icon" aria-hidden="true">view_column</span><span class="view-mode-label">Split</span></button>
+          <button type="button" id="btnPreviewOnly" class="view-mode-btn" title="Preview only"><span class="material-symbols-outlined view-mode-icon" aria-hidden="true">preview</span><span class="view-mode-label">Preview</span></button>
+        </div>
+        <div class="editor-toolbar-actions" role="group" aria-label="Edit">
+          <button type="button" id="btnUndo" class="editor-toolbar-btn" title="Undo (Ctrl+Z)"><span class="material-symbols-outlined" aria-hidden="true">undo</span></button>
+          <button type="button" id="btnRedo" class="editor-toolbar-btn" title="Redo (Ctrl+Y)"><span class="material-symbols-outlined" aria-hidden="true">redo</span></button>
+        </div>
+        <div class="editor-toolbar-outline" role="group" aria-label="Outline">
+          <button type="button" id="btnToggleOutline" class="editor-toolbar-btn" title="Outline" aria-label="Open Outline panel"><span class="material-symbols-outlined" aria-hidden="true">list</span></button>
+        </div>
+      </div>
+      <div id="restoreDraftBanner" class="restore-draft-banner hidden">
+        <span>Restore previous session?</span>
+        <button type="button" id="restoreDraftYes" class="btn-panel btn-sm btn-primary">Restore</button>
+        <button type="button" id="restoreDraftNo" class="btn-panel btn-sm">Discard</button>
+      </div>
+      <div class="editor-split" id="editorSplit">
+        <div class="editor-pane" id="editorPane">
+          <div class="pane-header">Markdown</div>
+          <div id="findReplaceBar" class="find-widget hidden" role="dialog" aria-label="Find and replace">
+            <div class="find-widget-row find-widget-row-main">
+              <input type="text" id="findInput" class="input-text find-widget-input" placeholder="Find" aria-label="Find" />
+              <div class="find-widget-actions">
+                <button type="button" id="findPrev" class="find-widget-btn" title="Previous match"><span class="find-widget-btn-icon">↑</span><span class="find-widget-btn-text">Prev</span></button>
+                <button type="button" id="findNext" class="find-widget-btn" title="Next match"><span class="find-widget-btn-icon">↓</span><span class="find-widget-btn-text">Next</span></button>
+                <span class="find-count" id="findCount"></span>
+              </div>
+              <div class="find-widget-actions find-widget-actions-end">
+                <button type="button" id="findToggleReplace" class="find-widget-btn find-widget-toggle" title="Toggle Replace"><span class="find-widget-btn-icon">▼</span><span class="find-widget-btn-text">Replace</span></button>
+                <button type="button" id="findClose" class="find-widget-btn find-widget-close" title="Close"><span class="material-symbols-outlined find-widget-close-icon" aria-hidden="true">cancel</span><span class="find-widget-btn-text">Close</span></button>
+              </div>
+            </div>
+            <div id="findReplaceRow" class="find-widget-row find-widget-row-replace hidden">
+              <input type="text" id="replaceInput" class="input-text find-widget-input" placeholder="Replace" aria-label="Replace" />
+              <button type="button" id="btnReplaceOne" class="find-widget-btn find-widget-btn-action">Replace</button>
+              <button type="button" id="btnReplaceAll" class="find-widget-btn find-widget-btn-action">Replace all</button>
+            </div>
+          </div>
+          <div class="editor-pane-body">
+            <div class="editor-format-bar" id="editorFormatBar" aria-hidden="true">
+              <button type="button" class="editor-format-bar-arrow editor-format-bar-prev" aria-label="Previous format tools" title="Previous"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></button>
+              <div class="editor-format-bar-track" id="editorFormatBarTrack">
+              <div class="format-toolbar" role="group" aria-label="Format">
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="**" title="Bold" aria-label="Bold"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_bold</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="*" title="Italic" aria-label="Italic"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_italic</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="~~~~" title="Strikethrough" aria-label="Strikethrough"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_strikethrough</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="`" title="Code" aria-label="Code"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">code</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-prefix="# " title="Heading" aria-label="Heading"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">title</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-prefix="- " title="Bullet list" aria-label="Bullet list"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_list_bulleted</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-prefix="1. " title="Numbered list" aria-label="Numbered list"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_list_numbered</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-prefix="> " title="Blockquote" aria-label="Blockquote"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">format_quote</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-prefix="- [ ] " title="Task (unchecked)" aria-label="Task (unchecked)"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">checklist</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-insert-type="hr" title="Horizontal line" aria-label="Horizontal line"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">remove</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-insert-type="table" title="Insert table" aria-label="Insert table"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">table_chart</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="[]()" title="Link" aria-label="Link"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">link</span></button>
+                <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="![]()" title="Image" aria-label="Image"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">image</span></button>
+              </div>
+              <div class="format-toolbar format-toolbar-find" role="group" aria-label="Find">
+                <button type="button" id="btnFindInBar" class="btn-panel btn-sm fmt-btn" title="Find (Ctrl+F)" aria-label="Find"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">search</span></button>
+                <button type="button" id="btnReplaceInBar" class="btn-panel btn-sm fmt-btn" title="Find and replace (Ctrl+H)" aria-label="Find and replace"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">find_replace</span></button>
+              </div>
+              </div>
+              <button type="button" class="editor-format-bar-arrow editor-format-bar-next" aria-label="Next format tools" title="Next"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></button>
+            </div>
+            <div class="editor-textarea-wrap">
+              <textarea class="editor-textarea" id="editor" placeholder="# Hello&#10;&#10;Write markdown here..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="preview-pane">
+          <div class="pane-header">Preview</div>
+          <div class="preview-content-wrap">
+            <div class="preview-content" id="preview">
+              <span class="preview-empty">Preview will appear here.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div class="panel-resizer" id="resizerRight" role="separator" aria-orientation="vertical" title="Drag to resize panel"></div>
+
+    <!-- Right panel: Outline -->
+    <aside class="layers-panel" id="outlinePanel" aria-label="Document outline">
+      <div class="panel-header">
+        <span class="panel-title">Outline</span>
+        <button type="button" id="btnCloseOutlinePanel" class="panel-close-btn" title="Close panel" aria-label="Close Outline panel"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+      </div>
+      <ul class="outline-list" id="outline">
+        <li class="outline-empty">No headings yet.</li>
+      </ul>
+      <div class="editor-status-row">
+        <div class="editor-status" id="editorStatus" aria-live="polite">0 words · 0 lines · 0 chars</div>
+        <div class="editor-status-goal-wrap hidden" id="editorStatusGoalWrap" aria-hidden="true">
+          <div class="editor-status-goal-bar" id="editorStatusGoalBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+      </div>
+      <button type="button" id="btnBackToTop" class="btn-panel btn-sm btn-back-to-top hidden" title="Back to top">↑ Top</button>
+    </aside>
+  </div>
+
+  <div id="panelBackdrop" class="panel-backdrop hidden" aria-hidden="true"></div>
+
+  <div id="welcomeModal" class="welcome-modal" role="dialog" aria-labelledby="welcomeModalTitle" aria-modal="true">
+    <div class="welcome-modal-backdrop"></div>
+    <div class="welcome-modal-content">
+      <div class="welcome-modal-header">
+        <h2 id="welcomeModalTitle" class="welcome-modal-title">Markdown Editor</h2>
+        <p class="welcome-modal-subtitle">Edit markdown in the browser</p>
+      </div>
+      <p class="welcome-modal-text">Write markdown in the editor and see a live preview. Use the left panel to open and save files, the center for Edit / Split / Preview, and the right panel for an outline of headings. Use Settings to switch theme or drag the dividers to resize panels.</p>
+      <label class="welcome-modal-dont-show">
+        <input type="checkbox" id="welcomeModalDontShowAgain" />
+        <span>Don't show this again</span>
+      </label>
+      <button type="button" id="welcomeModalBtn" class="btn-panel welcome-modal-btn">Get started</button>
+      <p class="welcome-modal-credit">Client-side markdown editor. Created by <a href="https://ilir.netlify.app/" target="_blank" rel="noopener noreferrer" class="welcome-modal-link">Ilir Krasniqi</a></p>
+    </div>
+  </div>
+
+  <div id="pdfPreviewModal" class="pdf-preview-modal hidden" role="dialog" aria-labelledby="pdfPreviewModalTitle" aria-modal="true">
+    <div class="pdf-preview-modal-backdrop"></div>
+    <div class="pdf-preview-modal-content">
+      <div class="pdf-preview-modal-header">
+        <h2 id="pdfPreviewModalTitle" class="pdf-preview-modal-title">Export as PDF</h2>
+        <p class="pdf-preview-modal-subtitle">Preview and choose filename</p>
+      </div>
+      <div class="pdf-preview-modal-body">
+        <label class="pdf-preview-filename-row">
+          <span class="pdf-preview-filename-label">File name</span>
+          <input type="text" id="pdfPreviewFilename" class="input-text pdf-preview-filename-input" placeholder="document" value="document" />
+        </label>
+        <div class="pdf-preview-scroll">
+          <div id="pdfPreviewContent" class="pdf-preview-content"></div>
+        </div>
+      </div>
+      <div class="pdf-preview-modal-footer">
+        <button type="button" id="pdfPreviewCancel" class="btn-panel">Cancel</button>
+        <button type="button" id="pdfPreviewSave" class="btn-panel btn-primary">Save as PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
