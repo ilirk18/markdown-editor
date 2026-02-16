@@ -8,7 +8,9 @@
   <script>
     (function(){
       try {
-        var t = localStorage.getItem('ilirTheme');
+        var m = location.search.match(/[?&]theme=(light|dark)/);
+        var t = m ? m[1] : localStorage.getItem('ilirTheme');
+        if (m) localStorage.setItem('ilirTheme', t);
         var fav = document.getElementById('favicon');
         if (t === 'light' && fav) fav.href = 'favicon-light.svg';
         else if (t === 'dark' && fav) fav.href = 'favicon.svg';
@@ -22,6 +24,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 </head>
 <body>
+  <script>try{var m=location.search.match(/[?&]theme=(light|dark)/);var t=m?m[1]:localStorage.getItem('ilirTheme');if(m)localStorage.setItem('ilirTheme',t);document.body.classList.toggle('theme-light',t==='light');}catch(e){}</script>
   <div class="container">
     <!-- Left panel: File & options -->
     <aside class="controls" id="controlsPanel" aria-label="File and document options">

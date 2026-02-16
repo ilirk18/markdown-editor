@@ -7,6 +7,12 @@ body {
   transition: background-color 0.3s ease;
 }
 
+/* Disable transitions during theme change so all panels update in sync */
+body.theme-switching,
+body.theme-switching * {
+  transition: none !important;
+}
+
 .container {
   display: flex;
   height: 100vh;

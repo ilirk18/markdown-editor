@@ -32,9 +32,15 @@
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch (e) {}
+    document.body.classList.add("theme-switching");
     document.body.classList.toggle("theme-light", theme === "light");
     var fav = document.getElementById("favicon");
     if (fav) fav.href = theme === "light" ? "favicon-light.svg" : "favicon.svg";
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        document.body.classList.remove("theme-switching");
+      });
+    });
   }
 
   function getStoredPanelWidths() {
