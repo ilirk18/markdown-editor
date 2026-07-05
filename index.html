@@ -8,23 +8,27 @@
   <script>
     (function(){
       try {
-        var m = location.search.match(/[?&]theme=(light|dark)/);
+        var m = location.search.match(/[?&]theme=(light|dark|prishtina)/);
         var t = m ? m[1] : localStorage.getItem('ilirTheme');
         if (m) localStorage.setItem('ilirTheme', t);
         var fav = document.getElementById('favicon');
         if (t === 'light' && fav) fav.href = 'favicon-light.svg';
-        else if (t === 'dark' && fav) fav.href = 'favicon.svg';
+        else if (fav && (t === 'dark' || t === 'prishtina')) fav.href = 'favicon.svg';
       } catch (e) {}
     })();
   </script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="theme-light.css" />
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="theme-prishtina.css" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self';" />
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@16.4.1/marked.min.js" referrerpolicy="no-referrer"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 </head>
 <body>
-  <script>try{var m=location.search.match(/[?&]theme=(light|dark)/);var t=m?m[1]:localStorage.getItem('ilirTheme');if(m)localStorage.setItem('ilirTheme',t);document.body.classList.toggle('theme-light',t==='light');}catch(e){}</script>
+  <script>try{var m=location.search.match(/[?&]theme=(light|dark|prishtina)/);var t=m?m[1]:localStorage.getItem('ilirTheme');if(m)localStorage.setItem('ilirTheme',t);document.body.classList.toggle('theme-light',t==='light');document.body.classList.toggle('theme-prishtina',t==='prishtina');}catch(e){}</script>
   <div class="container">
     <!-- Left panel: File & options -->
     <aside class="controls" id="controlsPanel" aria-label="File and document options">
@@ -188,25 +192,21 @@
       </details>
 
       <div class="controls-footer" role="group" aria-label="Interface theme">
-        <div class="theme-row">
-          <span class="theme-switch-label">Dark</span>
-          <button type="button" id="themeSwitch" class="theme-switch" role="switch" aria-checked="false" aria-label="Use light theme">
-            <span class="theme-switch-track">
-              <span class="theme-switch-thumb"></span>
-            </span>
-          </button>
-          <span class="theme-switch-label">Light</span>
+        <div class="theme-select" id="themeSelect" role="radiogroup" aria-label="Theme">
+          <button type="button" class="theme-select-btn" data-theme="dark" role="radio" aria-checked="true">Dark</button>
+          <button type="button" class="theme-select-btn" data-theme="light" role="radio" aria-checked="false">Light</button>
+          <button type="button" class="theme-select-btn" data-theme="prishtina" role="radio" aria-checked="false" title="Terminal theme, matches ilir.netlify.app">Prishtina</button>
         </div>
       </div>
     </aside>
 
-    <div class="panel-resizer" id="resizerLeft" role="separator" aria-orientation="vertical" title="Drag to resize panel"></div>
+    <div class="panel-resizer" id="resizerLeft" role="separator" aria-orientation="vertical" aria-label="Resize file panel" tabindex="0" title="Drag to resize panel"></div>
 
     <!-- Center: Editor + Preview -->
     <main class="editor-wrapper" id="editorWrapper">
       <div class="editor-toolbar">
         <div class="editor-toolbar-mobile" role="group" aria-label="Panels">
-          <button type="button" id="btnToggleFile" class="editor-toolbar-btn" title="File" aria-label="Open File panel"><span class="material-symbols-outlined" aria-hidden="true">folder_open</span></button>
+          <button type="button" id="btnToggleFile" class="editor-toolbar-btn" title="File" aria-label="Open File panel" aria-expanded="false" aria-controls="controlsPanel"><span class="material-symbols-outlined" aria-hidden="true">folder_open</span></button>
         </div>
         <div class="view-mode-group" role="group" aria-label="View mode">
           <button type="button" id="btnEditOnly" class="view-mode-btn" title="Edit only"><span class="material-symbols-outlined view-mode-icon" aria-hidden="true">edit_note</span><span class="view-mode-label">Edit</span></button>
@@ -218,7 +218,7 @@
           <button type="button" id="btnRedo" class="editor-toolbar-btn" title="Redo (Ctrl+Y)"><span class="material-symbols-outlined" aria-hidden="true">redo</span></button>
         </div>
         <div class="editor-toolbar-outline" role="group" aria-label="Outline">
-          <button type="button" id="btnToggleOutline" class="editor-toolbar-btn" title="Outline" aria-label="Open Outline panel"><span class="material-symbols-outlined" aria-hidden="true">list</span></button>
+          <button type="button" id="btnToggleOutline" class="editor-toolbar-btn" title="Outline" aria-label="Open Outline panel" aria-expanded="false" aria-controls="outlinePanel"><span class="material-symbols-outlined" aria-hidden="true">list</span></button>
         </div>
       </div>
       <div id="restoreDraftBanner" class="restore-draft-banner hidden">
@@ -290,7 +290,7 @@
       </div>
     </main>
 
-    <div class="panel-resizer" id="resizerRight" role="separator" aria-orientation="vertical" title="Drag to resize panel"></div>
+    <div class="panel-resizer" id="resizerRight" role="separator" aria-orientation="vertical" aria-label="Resize outline panel" tabindex="0" title="Drag to resize panel"></div>
 
     <!-- Right panel: Outline -->
     <aside class="layers-panel" id="outlinePanel" aria-label="Document outline">
@@ -312,6 +312,7 @@
   </div>
 
   <div id="panelBackdrop" class="panel-backdrop hidden" aria-hidden="true"></div>
+  <div id="appToast" class="app-toast hidden" aria-live="polite" role="status"></div>
 
   <div id="welcomeModal" class="welcome-modal" role="dialog" aria-labelledby="welcomeModalTitle" aria-modal="true">
     <div class="welcome-modal-backdrop"></div>
@@ -353,6 +354,7 @@
     </div>
   </div>
 
+  <script src="modules/rendering.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

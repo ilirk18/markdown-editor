@@ -57,6 +57,10 @@ markdown-editor/
 ├── app.js              # Editor logic, preview, file/export, settings
 ├── style.css           # Base styles
 ├── theme-light.css     # Light theme overrides
+├── modules/
+│   └── rendering.js    # Shared markdown rendering + sanitization helper
+├── tests/
+│   └── smoke-checklist.md
 ├── favicon.svg         # Dark theme favicon
 ├── favicon-light.svg   # Light theme favicon
 ├── docs/
@@ -69,3 +73,22 @@ markdown-editor/
 ## License
 
 Use and modify as you like. No warranty.
+
+---
+
+## Architecture notes
+
+- Rendering and sanitization are centralized via `modules/rendering.js`.
+- `app.js` orchestrates editor interactions, panel behavior, exports, and persistence.
+- Styling uses shared CSS token variables in `style.css` with light-mode overrides in `theme-light.css`.
+
+## Testing
+
+- Use `tests/smoke-checklist.md` for manual regression after each major change.
+- Prioritize open/save, find/replace, preview rendering, draft restore, and export checks.
+
+## Security posture
+
+- Rendered markdown is sanitized before insertion into preview/export HTML.
+- A baseline Content Security Policy is defined in `index.html`.
+- Clipboard/popup/export failures are surfaced via non-blocking UI status feedback.
