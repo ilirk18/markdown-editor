@@ -657,3 +657,104 @@ body.theme-prishtina .outline-list::-webkit-scrollbar-thumb:active,
 body.theme-prishtina .editor-textarea::-webkit-scrollbar-thumb:active {
   background: var(--pr-accent);
 }
+
+/* ----- Editor highlighting overlay (prishtina) ----- */
+body.theme-prishtina.editor-highlight-on .editor-textarea {
+  caret-color: var(--pr-accent);
+}
+
+body.theme-prishtina.editor-highlight-on .editor-textarea-wrap::before {
+  background: var(--pr-head);
+}
+
+body.theme-prishtina .editor-highlight {
+  font-family: var(--pr-font-mono);
+  color: var(--pr-text);
+}
+
+body.theme-prishtina .mdh-marker { color: #55636f; }
+body.theme-prishtina .mdh-heading { color: var(--pr-accent-strong); }
+body.theme-prishtina .mdh-heading .mdh-marker { color: var(--pr-accent); }
+body.theme-prishtina .mdh-bold { color: var(--pr-amber); }
+body.theme-prishtina .mdh-italic { color: #d5a8e8; }
+body.theme-prishtina .mdh-del { color: var(--pr-dim); }
+body.theme-prishtina .mdh-code { color: var(--pr-accent); }
+body.theme-prishtina .mdh-codeblock { color: #a9c6a0; }
+body.theme-prishtina .mdh-fence { color: #6f9a63; }
+body.theme-prishtina .mdh-link { color: var(--pr-amber); }
+body.theme-prishtina .mdh-url { color: #a0813f; }
+body.theme-prishtina .mdh-quote { color: #9aa78f; }
+body.theme-prishtina .mdh-list-marker { color: var(--pr-amber); }
+body.theme-prishtina .mdh-table .mdh-marker { color: var(--pr-amber); }
+
+/* ----- Library (prishtina) ----- */
+body.theme-prishtina .library-empty { color: var(--pr-dim); }
+body.theme-prishtina .library-item-btn {
+  background: var(--pr-surface);
+  border-color: var(--pr-border-strong);
+}
+body.theme-prishtina .library-item-btn:hover {
+  background: var(--pr-surface-2);
+  border-color: var(--pr-accent);
+}
+body.theme-prishtina .library-item-name {
+  font-family: var(--pr-font-mono);
+  color: var(--pr-text);
+}
+body.theme-prishtina .library-item-date { color: var(--pr-dim); }
+body.theme-prishtina .library-item-delete { color: var(--pr-dim); }
+body.theme-prishtina .library-item-delete:hover {
+  color: #e07a5f;
+  background: rgba(224, 122, 95, 0.1);
+}
+body.theme-prishtina .doc-filename-hint-linked { color: var(--pr-accent) !important; }
+
+/* ----- Command palette (prishtina) ----- */
+body.theme-prishtina .cmd-palette-box {
+  background: var(--pr-panel);
+  border-color: var(--pr-border-strong);
+}
+body.theme-prishtina .cmd-palette-input {
+  font-family: var(--pr-font-mono);
+  background: var(--pr-head);
+  border-bottom-color: var(--pr-border);
+  color: var(--pr-text);
+}
+body.theme-prishtina .cmd-palette-input::placeholder { color: var(--pr-dim); }
+body.theme-prishtina .cmd-palette-item {
+  font-family: var(--pr-font-mono);
+  font-size: 12px;
+  color: var(--pr-soft);
+}
+body.theme-prishtina .cmd-palette-item:hover { background: var(--pr-surface); color: var(--pr-text); }
+body.theme-prishtina .cmd-palette-item.selected { background: var(--pr-accent); color: var(--pr-accent-ink); }
+body.theme-prishtina .cmd-palette-hint { color: var(--pr-dim); }
+body.theme-prishtina .cmd-palette-item.selected .cmd-palette-hint { color: var(--pr-accent-ink); }
+body.theme-prishtina .cmd-palette-empty { color: var(--pr-dim); }
+
+/* Preview code tokens keep good contrast on the ink background already
+   via the shared dark palette; only the panel summary needs the accent */
+body.theme-prishtina .library-panel-content .btn-panel {
+  justify-content: flex-start;
+}
+
+/* ----- Round 3 (prishtina) ----- */
+body.theme-prishtina .mdh-active { background: rgba(143, 208, 124, 0.07); }
+body.theme-prishtina .mdh-frontmatter { color: #6b7a68; }
+body.theme-prishtina .frontmatter {
+  background: var(--pr-surface);
+  border-color: var(--pr-border-strong);
+}
+body.theme-prishtina .frontmatter th { color: var(--pr-accent); font-family: var(--pr-font-mono); }
+body.theme-prishtina .frontmatter td { color: var(--pr-soft); }
+body.theme-prishtina .code-copy-btn {
+  font-family: var(--pr-font-mono);
+  color: var(--pr-dim);
+  background: var(--pr-head);
+  border-color: var(--pr-border-strong);
+}
+body.theme-prishtina .code-copy-btn:hover { color: var(--pr-text); border-color: var(--pr-accent); }
+body.theme-prishtina .preview-content li > input[type="checkbox"] { accent-color: var(--pr-accent); }
+body.theme-prishtina .library-search { font-family: var(--pr-font-mono); }
+body.theme-prishtina .library-history-label { margin-top: 8px; }
+body.theme-prishtina .outline-list li.drop-target { box-shadow: inset 0 2px 0 var(--pr-accent); }

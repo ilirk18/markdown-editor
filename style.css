@@ -2201,3 +2201,494 @@ body.zen-mode .editor-wrapper {
   outline: 2px solid #0d7acc;
   outline-offset: 1px;
 }
+
+/* ═══════════ Editor markdown highlighting overlay ═══════════ */
+.editor-textarea-wrap {
+  position: relative;
+}
+
+.editor-highlight {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  pointer-events: none;
+  z-index: 1;
+  color: #e8e8e8;
+  background: transparent;
+}
+
+body.editor-highlight-on .editor-highlight {
+  display: block;
+}
+
+.editor-textarea {
+  position: relative;
+  z-index: 2;
+}
+
+body.editor-highlight-on .editor-textarea {
+  color: transparent;
+  caret-color: #e8e8e8;
+  background: #2b2b2b;
+}
+
+body.editor-highlight-on .editor-highlight {
+  background: transparent;
+}
+
+body.editor-highlight-on .editor-textarea::placeholder {
+  color: #666;
+  -webkit-text-fill-color: #666;
+}
+
+body.editor-highlight-on .editor-textarea::selection {
+  background: rgba(13, 122, 204, 0.4);
+  color: transparent;
+}
+
+/* Overlay sits behind the textarea, so give the textarea a transparent
+   background and paint the surface on the overlay's parent instead */
+body.editor-highlight-on .editor-textarea {
+  background: transparent;
+}
+
+body.editor-highlight-on .editor-textarea-wrap::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  background: #2b2b2b;
+  border-radius: 2px;
+  z-index: 0;
+}
+
+/* Markdown token colors — dark */
+.mdh-marker { color: #6f7d8c; }
+.mdh-heading { color: #7eb8e8; font-weight: 600; }
+.mdh-heading .mdh-marker { color: #4a7aa5; font-weight: 400; }
+.mdh-bold { color: #f0d27a; font-weight: 600; }
+.mdh-italic { color: #d5a8e8; font-style: italic; }
+.mdh-del { color: #888; }
+.mdh-code { color: #8fd07c; }
+.mdh-codeblock { color: #a9c6a0; }
+.mdh-fence { color: #6f9a63; }
+.mdh-link { color: #7eb8e8; }
+.mdh-url { color: #5a7d99; text-decoration: underline; }
+.mdh-quote { color: #9aa78f; font-style: italic; }
+.mdh-list-marker { color: #e0a35c; font-weight: 600; }
+.mdh-hr { color: #6f7d8c; }
+.mdh-table .mdh-marker { color: #e0a35c; }
+
+/* ═══════════ highlight.js token colors ═══════════ */
+/* Dark preview */
+.preview-content pre code .hljs-keyword,
+.preview-content pre code .hljs-selector-tag,
+.preview-content pre code .hljs-meta { color: #c678dd; }
+.preview-content pre code .hljs-string,
+.preview-content pre code .hljs-addition { color: #98c379; }
+.preview-content pre code .hljs-number,
+.preview-content pre code .hljs-literal { color: #d19a66; }
+.preview-content pre code .hljs-comment,
+.preview-content pre code .hljs-quote { color: #7f848e; font-style: italic; }
+.preview-content pre code .hljs-title,
+.preview-content pre code .hljs-name,
+.preview-content pre code .hljs-section { color: #61afef; }
+.preview-content pre code .hljs-attr,
+.preview-content pre code .hljs-attribute,
+.preview-content pre code .hljs-variable,
+.preview-content pre code .hljs-deletion { color: #e06c75; }
+.preview-content pre code .hljs-built_in,
+.preview-content pre code .hljs-type { color: #56b6c2; }
+
+/* Light preview (preview-light mode) and PDF preview (white paper) */
+body.preview-light .preview-content pre code .hljs-keyword,
+body.preview-light .preview-content pre code .hljs-selector-tag,
+body.preview-light .preview-content pre code .hljs-meta,
+.pdf-preview-content pre code .hljs-keyword,
+.pdf-preview-content pre code .hljs-selector-tag,
+.pdf-preview-content pre code .hljs-meta { color: #a626a4; }
+body.preview-light .preview-content pre code .hljs-string,
+body.preview-light .preview-content pre code .hljs-addition,
+.pdf-preview-content pre code .hljs-string,
+.pdf-preview-content pre code .hljs-addition { color: #50a14f; }
+body.preview-light .preview-content pre code .hljs-number,
+body.preview-light .preview-content pre code .hljs-literal,
+.pdf-preview-content pre code .hljs-number,
+.pdf-preview-content pre code .hljs-literal { color: #986801; }
+body.preview-light .preview-content pre code .hljs-comment,
+body.preview-light .preview-content pre code .hljs-quote,
+.pdf-preview-content pre code .hljs-comment,
+.pdf-preview-content pre code .hljs-quote { color: #a0a1a7; font-style: italic; }
+body.preview-light .preview-content pre code .hljs-title,
+body.preview-light .preview-content pre code .hljs-name,
+body.preview-light .preview-content pre code .hljs-section,
+.pdf-preview-content pre code .hljs-title,
+.pdf-preview-content pre code .hljs-name,
+.pdf-preview-content pre code .hljs-section { color: #4078f2; }
+body.preview-light .preview-content pre code .hljs-attr,
+body.preview-light .preview-content pre code .hljs-attribute,
+body.preview-light .preview-content pre code .hljs-variable,
+body.preview-light .preview-content pre code .hljs-deletion,
+.pdf-preview-content pre code .hljs-attr,
+.pdf-preview-content pre code .hljs-attribute,
+.pdf-preview-content pre code .hljs-variable,
+.pdf-preview-content pre code .hljs-deletion { color: #e45649; }
+body.preview-light .preview-content pre code .hljs-built_in,
+body.preview-light .preview-content pre code .hljs-type,
+.pdf-preview-content pre code .hljs-built_in,
+.pdf-preview-content pre code .hljs-type { color: #0184bc; }
+
+/* ═══════════ Mermaid diagrams ═══════════ */
+.mermaid-diagram {
+  margin: 0 0 0.75em;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  color: #e07a5f;
+  background: rgba(224, 122, 95, 0.08);
+  border: 1px dashed rgba(224, 122, 95, 0.5);
+  border-radius: 4px;
+  text-align: left;
+}
+
+/* ═══════════ Document library ═══════════ */
+.library-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.library-empty {
+  font-size: 11px;
+  color: #888;
+  font-style: italic;
+}
+
+.library-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.library-item-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  text-align: left;
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.library-item-btn:hover {
+  background: #2e2e2e;
+  border-color: #0d7acc;
+}
+
+.library-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e0e0e0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-item-date {
+  font-size: 10px;
+  color: #888;
+}
+
+.library-item-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #777;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.12s, background 0.12s;
+}
+
+.library-item-delete:hover {
+  color: #e07a5f;
+  background: rgba(224, 122, 95, 0.1);
+}
+
+.library-item-delete .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.doc-filename-hint-linked {
+  color: #7ec97e !important;
+}
+
+/* ═══════════ Command palette ═══════════ */
+.cmd-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 25000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 20px 20px;
+  box-sizing: border-box;
+}
+
+.cmd-palette.hidden {
+  display: none !important;
+}
+
+.cmd-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.cmd-palette-box {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: #2b2b2b;
+  border: 1px solid #505050;
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cmd-palette-input {
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #232323;
+  border: none;
+  border-bottom: 1px solid #404040;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.cmd-palette-input::placeholder {
+  color: #777;
+}
+
+.cmd-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cmd-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #c8c8c8;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cmd-palette-item:hover {
+  background: #353535;
+  color: #fff;
+}
+
+.cmd-palette-item.selected {
+  background: #0d7acc;
+  color: #fff;
+}
+
+.cmd-palette-hint {
+  font-size: 11px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.cmd-palette-item.selected .cmd-palette-hint {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cmd-palette-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+/* ═══════════ Round 3: writing-feel & data features ═══════════ */
+
+/* Active line in the editor overlay */
+.mdh-active {
+  background: rgba(255, 255, 255, 0.055);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-radius: 2px;
+}
+
+/* Frontmatter — dimmed in the overlay */
+.mdh-frontmatter { color: #7a8577; }
+
+/* Frontmatter — metadata table in the preview */
+.frontmatter {
+  margin: 0 0 1em;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed #454545;
+  border-radius: 4px;
+}
+
+.frontmatter table {
+  border-collapse: collapse;
+  width: auto;
+  font-size: 12px;
+}
+
+.frontmatter th {
+  padding: 2px 14px 2px 0;
+  text-align: left;
+  font-weight: 600;
+  color: #8ab4d8;
+  border: none;
+  background: none;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.frontmatter td {
+  padding: 2px 0;
+  color: #a8a8a8;
+  border: none;
+}
+
+/* Copy button on preview code blocks */
+.preview-content pre {
+  position: relative;
+}
+
+.code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-family: "Consolas", "Monaco", monospace;
+  color: #999;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.preview-content pre:hover .code-copy-btn,
+.code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.code-copy-btn:hover {
+  color: #fff;
+  border-color: #0d7acc;
+}
+
+/* Task checkboxes are interactive now */
+.preview-content li > input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #0d7acc;
+}
+
+/* Math */
+.math-display {
+  display: block;
+  margin: 0.6em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+/* Library search + backup + history */
+.library-search {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.library-backup-row {
+  display: flex;
+  gap: 8px;
+}
+
+.library-backup-row .btn-panel {
+  flex: 1;
+}
+
+.library-history-label {
+  margin: 8px 0 0;
+}
+
+.draft-history-list {
+  max-height: 170px;
+}
+
+/* Outline drag & drop */
+.outline-list li[draggable="true"] {
+  cursor: grab;
+}
+
+.outline-list li.dragging {
+  opacity: 0.45;
+}
+
+.outline-list li.drop-target {
+  box-shadow: inset 0 2px 0 #0d7acc;
+}

@@ -501,6 +501,16 @@
     const chars = text ? text.length : 0;
     const goal = getWordGoal();
     let status = words + " word" + (words !== 1 ? "s" : "") + " · " + lines + " line" + (lines !== 1 ? "s" : "") + " · " + chars + " char" + (chars !== 1 ? "s" : "");
+    if (words > 0) status += " · ~" + Math.max(1, Math.round(words / 200)) + " min read";
+    if (document.activeElement === editor) {
+      var pos = editor.selectionStart || 0;
+      var before = text.slice(0, pos);
+      status += " · Ln " + before.split("\n").length + ", Col " + (pos - before.lastIndexOf("\n"));
+      if (editor.selectionStart !== editor.selectionEnd) {
+        var selWords = countWords(text.slice(editor.selectionStart, editor.selectionEnd));
+        status += " · " + selWords + " selected";
+      }
+    }
     if (goal > 0) status += " · " + words + " / " + goal;
     editorStatus.textContent = status;
     var goalWrap = document.getElementById("editorStatusGoalWrap");
@@ -530,6 +540,7 @@
       outlineItems = [];
       updateOutline();
       updateStatus();
+      scheduleOverlay();
       return;
     }
     try {
@@ -537,16 +548,106 @@
       // Add outline-0, outline-1, ... to headings for scroll-to and scroll sync
       var headings = preview.querySelectorAll("h1, h2, h3, h4, h5, h6");
       for (var i = 0; i < headings.length; i++) headings[i].id = "outline-" + i;
+      highlightCodeIn(preview);
+      renderMermaidBlocks(preview);
+      renderMathIn(preview);
+      setupTaskCheckboxes(preview);
+      setupCodeCopyButtons(preview);
     } catch (e) {
       preview.innerHTML = '<span class="preview-empty">Parse error.</span>';
       outlineItems = [];
     }
     updateOutline();
     updateStatus();
+    scheduleOverlay();
   }
   function scheduleRenderPreview() {
     clearTimeout(renderTimer);
     renderTimer = setTimeout(renderPreview, PREVIEW_DEBOUNCE_MS);
+  }
+
+  // ----- Code highlighting (highlight.js) in preview and exports -----
+  function highlightCodeIn(container) {
+    if (!window.hljs || !container) return;
+    container.querySelectorAll("pre code").forEach(function (block) {
+      if (block.classList.contains("language-mermaid")) return;
+      try { hljs.highlightElement(block); } catch (e) {}
+    });
+  }
+
+  function highlightHtmlString(html) {
+    if (!window.hljs) return html;
+    var tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    highlightCodeIn(tmp);
+    return tmp.innerHTML;
+  }
+
+  // Token colors for exported HTML (dark pre background)
+  var EXPORT_HLJS_CSS = "pre code .hljs-keyword,pre code .hljs-selector-tag,pre code .hljs-meta{color:#c678dd}pre code .hljs-string,pre code .hljs-addition{color:#98c379}pre code .hljs-number,pre code .hljs-literal{color:#d19a66}pre code .hljs-comment,pre code .hljs-quote{color:#7f848e;font-style:italic}pre code .hljs-title,pre code .hljs-name,pre code .hljs-section{color:#61afef}pre code .hljs-attr,pre code .hljs-attribute,pre code .hljs-variable,pre code .hljs-deletion{color:#e06c75}pre code .hljs-built_in,pre code .hljs-type{color:#56b6c2}";
+
+  // ----- Mermaid diagrams: ```mermaid fences render as SVG. The library is
+  // large, so it is loaded lazily the first time a diagram appears. -----
+  var mermaidLoading = null;
+  var mermaidSeq = 0;
+  var mermaidSvgCache = {};
+  var mermaidCacheCount = 0;
+
+  function loadMermaid() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    if (mermaidLoading) return mermaidLoading;
+    mermaidLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "vendor/mermaid.min.js";
+      s.onload = function () { resolve(window.mermaid); };
+      s.onerror = function () { mermaidLoading = null; reject(new Error("mermaid failed to load")); };
+      document.head.appendChild(s);
+    });
+    return mermaidLoading;
+  }
+
+  function currentMermaidTheme() {
+    if (document.body.classList.contains("preview-light")) return "default";
+    if (document.body.classList.contains("theme-light")) return "default";
+    return "dark";
+  }
+
+  function renderMermaidBlocks(container) {
+    var blocks = container.querySelectorAll("pre code.language-mermaid");
+    if (!blocks.length) return;
+    var theme = currentMermaidTheme();
+    var jobs = [];
+    blocks.forEach(function (block) {
+      var src = block.textContent;
+      var holder = document.createElement("div");
+      holder.className = "mermaid-diagram";
+      block.parentElement.replaceWith(holder);
+      jobs.push({ src: src, holder: holder });
+    });
+    loadMermaid().then(function (mermaid) {
+      mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: "strict" });
+      jobs.forEach(function (job) {
+        var key = theme + "|" + job.src;
+        if (mermaidSvgCache[key]) {
+          job.holder.innerHTML = mermaidSvgCache[key];
+          return;
+        }
+        mermaid.render("mermaid-d" + (++mermaidSeq), job.src).then(function (out) {
+          if (mermaidCacheCount > 40) { mermaidSvgCache = {}; mermaidCacheCount = 0; }
+          mermaidSvgCache[key] = out.svg;
+          mermaidCacheCount++;
+          job.holder.innerHTML = out.svg;
+        }).catch(function (err) {
+          job.holder.className = "mermaid-diagram mermaid-error";
+          job.holder.textContent = "Mermaid: " + (err && err.message ? String(err.message).split("\n")[0] : "invalid diagram");
+        });
+      });
+    }).catch(function () {
+      jobs.forEach(function (job) {
+        job.holder.className = "mermaid-diagram mermaid-error";
+        job.holder.textContent = "Mermaid library could not be loaded.";
+      });
+    });
   }
 
   function escapeHtml(s) {
@@ -575,6 +676,8 @@
       var li = document.createElement("li");
       li.className = "outline-h" + item.level;
       li.dataset.outlineIndex = String(outlineIndex);
+      li.draggable = true;
+      li.title = "Drag to move this section";
       var button = document.createElement("button");
       button.type = "button";
       button.className = "outline-item-btn";
@@ -726,28 +829,22 @@
       updateStatus();
       return;
     }
+    // Pasting a URL over selected text turns the selection into a link
+    var pastedText = e.clipboardData ? (e.clipboardData.getData("text/plain") || "").trim() : "";
+    if (pastedText && /^https?:\/\/\S+$/.test(pastedText) && editor.selectionStart !== editor.selectionEnd) {
+      var sel = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+      if (!/[\[\]()]/.test(sel)) {
+        e.preventDefault();
+        insertAtCursor("[" + sel + "](" + pastedText + ")");
+        return;
+      }
+    }
     var files = e.clipboardData && e.clipboardData.files;
     if (files && files.length > 0) {
       var file = files[0];
       if (file.type && file.type.indexOf("image/") === 0) {
-        if (file.size > PASTE_IMAGE_MAX_SIZE) {
-          showError("Image too large to paste (max 2 MB).");
-          return;
-        }
         e.preventDefault();
-        var reader = new FileReader();
-        reader.onload = function () {
-          var dataUrl = reader.result;
-          var markdown = "![" + (file.name || "image") + "](" + dataUrl + ")";
-          var start = editor.selectionStart, end = editor.selectionEnd;
-          var text = editor.value;
-          editor.value = text.slice(0, start) + markdown + text.slice(end);
-          editor.setSelectionRange(start + markdown.length, start + markdown.length);
-          setDirty(true);
-          scheduleRenderPreview();
-          updateStatus();
-        };
-        reader.readAsDataURL(file);
+        insertImageFile(file);
         return;
       }
     }
@@ -765,10 +862,40 @@
     });
   }
 
+  // ----- Linked file (File System Access API, Chromium): Ctrl+S saves
+  // straight back to the opened file instead of downloading a copy. -----
+  var linkedFileHandle = null;
+
+  function updateLinkedFileHint() {
+    var hint = document.getElementById("docFilenameHint");
+    if (!hint) return;
+    if (linkedFileHandle) {
+      hint.textContent = "Linked to " + linkedFileHandle.name + " — Save writes directly to it";
+      hint.classList.add("doc-filename-hint-linked");
+    } else {
+      hint.textContent = "Used when saving or exporting";
+      hint.classList.remove("doc-filename-hint-linked");
+    }
+  }
+
+  function loadOpenedText(text, displayName) {
+    editor.value = text;
+    saveFilename.value = displayName || "document";
+    updateLinkedFileHint();
+    updateDocumentTitle();
+    resetUndoStack();
+    setDirty(false);
+    renderPreview();
+    updateStatus();
+    restoreDocState();
+  }
+
   function doNew() {
     if (isDirty && !confirm("You have unsaved changes. Discard and start a new document?")) return;
     editor.value = "";
     saveFilename.value = "document";
+    linkedFileHandle = null;
+    updateLinkedFileHint();
     resetUndoStack();
     setDirty(false);
     renderPreview();
@@ -777,10 +904,29 @@
 
   function doOpen() {
     if (isDirty && !confirm("You have unsaved changes. Discard and open another file?")) return;
+    if (window.showOpenFilePicker) {
+      window.showOpenFilePicker({
+        types: [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown"], "text/plain": [".txt"] } }],
+        multiple: false
+      }).then(function (handles) {
+        var handle = handles && handles[0];
+        if (!handle) return;
+        return handle.getFile().then(function (file) {
+          return file.text();
+        }).then(function (text) {
+          linkedFileHandle = handle;
+          loadOpenedText(text, handle.name.replace(/\.(md|markdown|txt)$/i, "") || "document");
+        });
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") return;
+        openFile.click();
+      });
+      return;
+    }
     openFile.click();
   }
 
-  function doSave() {
+  function downloadMarkdown() {
     const name = (saveFilename.value || "document").replace(/\.md$/i, "") + ".md";
     const blob = new Blob([editor.value], { type: "text/markdown;charset=utf-8" });
     const a = document.createElement("a");
@@ -791,24 +937,41 @@
     setDirty(false);
   }
 
+  function doSave() {
+    if (!linkedFileHandle) {
+      downloadMarkdown();
+      return;
+    }
+    linkedFileHandle.queryPermission({ mode: "readwrite" }).then(function (p) {
+      if (p === "granted") return "granted";
+      return linkedFileHandle.requestPermission({ mode: "readwrite" });
+    }).then(function (p) {
+      if (p !== "granted") throw new Error("denied");
+      return linkedFileHandle.createWritable();
+    }).then(function (writable) {
+      return writable.write(editor.value).then(function () { return writable.close(); });
+    }).then(function () {
+      setDirty(false);
+      showStatus("Saved to " + linkedFileHandle.name, "success");
+    }).catch(function () {
+      showError("Could not save to the linked file — downloading a copy instead.");
+      downloadMarkdown();
+    });
+  }
+
   // File: New
   document.getElementById("btnNew").addEventListener("click", doNew);
 
-  // File: Open (button triggers hidden file input)
+  // File: Open (file picker when available, hidden input as fallback)
   var btnOpen = document.getElementById("btnOpen");
-  if (btnOpen) btnOpen.addEventListener("click", function () { openFile.click(); });
+  if (btnOpen) btnOpen.addEventListener("click", doOpen);
   openFile.addEventListener("change", function () {
     const file = this.files[0];
     if (!file) return;
-    const name = file.name.replace(/\.(md|markdown)$/i, "");
-    saveFilename.value = name || "document";
-    updateDocumentTitle();
     const reader = new FileReader();
     reader.onload = function () {
-      editor.value = reader.result;
-      resetUndoStack();
-      setDirty(false);
-      renderPreview();
+      linkedFileHandle = null;
+      loadOpenedText(reader.result, file.name.replace(/\.(md|markdown)$/i, "") || "document");
     };
     reader.onerror = function () {
       showError("Could not read selected file.");
@@ -827,7 +990,7 @@
   // Export as HTML
   document.getElementById("btnExportHtml").addEventListener("click", function () {
     var baseName = getExportBaseName();
-    const html = "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>" + escapeHtml(baseName) + "</title>\n<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px;line-height:1.6;color:#333}code{background:#f0f0f0;padding:2px 6px;border-radius:4px}pre{background:#1e1e1e;color:#e0e0e0;padding:12px;border-radius:4px;overflow-x:auto}pre code{background:none;padding:0}a{color:#0d7acc}</style>\n</head>\n<body>\n" + markdownToHtml(editor.value) + "\n</body>\n</html>";
+    const html = "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>" + escapeHtml(baseName) + "</title>\n<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px;line-height:1.6;color:#333}code{background:#f0f0f0;padding:2px 6px;border-radius:4px}pre{background:#1e1e1e;color:#e0e0e0;padding:12px;border-radius:4px;overflow-x:auto}pre code{background:none;padding:0}a{color:#0d7acc}" + EXPORT_HLJS_CSS + "</style>\n</head>\n<body>\n" + highlightHtmlString(markdownToHtml(editor.value)) + "\n</body>\n</html>";
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -851,7 +1014,11 @@
     if (!contentHtml || contentHtml.trim() === "") {
       contentHtml = "<p>No content to export.</p>";
     }
-    if (pdfPreviewContent) pdfPreviewContent.innerHTML = contentHtml;
+    if (pdfPreviewContent) {
+      pdfPreviewContent.innerHTML = contentHtml;
+      highlightCodeIn(pdfPreviewContent);
+      renderMathIn(pdfPreviewContent);
+    }
     if (pdfPreviewFilename) pdfPreviewFilename.value = getExportBaseName();
     if (pdfPreviewModal) pdfPreviewModal.classList.remove("hidden");
     setTimeout(function () { if (pdfPreviewFilename) pdfPreviewFilename.focus(); }, 0);
@@ -875,11 +1042,12 @@
       var name = (pdfPreviewFilename && pdfPreviewFilename.value ? pdfPreviewFilename.value.replace(/\.[^.]+$/, "") : getExportBaseName()) + ".pdf";
       pdfPreviewSaveBtn.disabled = true;
       html2pdf().set({
-        margin: 8,
+        margin: [15, 12, 15, 12],
         filename: name,
-        image: { type: "jpeg", quality: 0.98 },
+        image: { type: "jpeg", quality: 0.95 },
         html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"], avoid: ["pre", "table", "img", "h2", "h3", "blockquote"] }
       }).from(pdfPreviewContent).save().then(function () {
         pdfPreviewSaveBtn.disabled = false;
         closePdfPreviewModal();
@@ -1101,6 +1269,12 @@
     var inFind = document.getElementById("findInput") && document.getElementById("findInput").matches(":focus");
     var inReplace = document.getElementById("replaceInput") && document.getElementById("replaceInput").matches(":focus");
     if (e.key === "Escape") {
+      var cmdPaletteEl = document.getElementById("cmdPalette");
+      if (cmdPaletteEl && !cmdPaletteEl.classList.contains("hidden")) {
+        closePalette();
+        e.preventDefault();
+        return;
+      }
       if (getZenMode()) {
         setZenMode(false);
         if (settingZenModeEl) settingZenModeEl.checked = false;
@@ -1127,6 +1301,17 @@
       }
     }
     if (e.ctrlKey || e.metaKey) {
+      if (e.shiftKey && (e.key === "P" || e.key === "p")) {
+        e.preventDefault();
+        openPalette();
+        return;
+      }
+      // Ctrl+Alt+1..6: set heading level (Ctrl+digit alone is browser tab switching)
+      if (e.altKey && e.key >= "1" && e.key <= "6" && document.activeElement === editor) {
+        e.preventDefault();
+        setHeadingLevel(parseInt(e.key, 10));
+        return;
+      }
       if (e.key === "f") {
         e.preventDefault();
         showFindBar(false);
@@ -1442,6 +1627,7 @@
       localStorage.setItem(DRAFT_HISTORY_KEY, JSON.stringify(history.slice(0, DRAFT_HISTORY_LIMIT)));
     } catch (e) {}
     showDraftSavedFeedback();
+    renderDraftHistory();
   }
   function loadDraft() {
     try {
@@ -1522,6 +1708,10 @@
       e.preventDefault();
       editorWrapper.classList.remove("drop-over");
       var file = e.dataTransfer.files[0];
+      if (file && file.type && file.type.indexOf("image/") === 0) {
+        insertImageFile(file);
+        return;
+      }
       if (!file || (!/\.(md|markdown)$/i.test(file.name) && !file.type.match(/^text\//))) return;
       if (isDirty && !confirm("Replace current document with the dropped file? Unsaved changes will be lost.")) return;
       var name = file.name.replace(/\.(md|markdown)$/i, "");
@@ -1542,8 +1732,1073 @@
     });
   }
 
+  // ----- Shared programmatic insertion (keeps the custom undo stack intact) -----
+  function insertAtCursor(str) {
+    saveUndoBeforeProgrammaticChange();
+    var start = editor.selectionStart, end = editor.selectionEnd;
+    var text = editor.value;
+    editor.value = text.slice(0, start) + str + text.slice(end);
+    lastSavedValue = editor.value;
+    editor.setSelectionRange(start + str.length, start + str.length);
+    setDirty(true);
+    scheduleRenderPreview();
+    updateStatus();
+  }
+
+  function insertImageFile(file) {
+    if (file.size > PASTE_IMAGE_MAX_SIZE) {
+      showError("Image too large (max 2 MB).");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var alt = (file.name || "image").replace(/\.[^.]+$/, "");
+      insertAtCursor("![" + alt + "](" + reader.result + ")");
+      editor.focus();
+    };
+    reader.onerror = function () { showError("Could not read image."); };
+    reader.readAsDataURL(file);
+  }
+
+  // ----- Smart lists: Enter continues -, 1., - [ ]; Tab indents; Enter on an
+  // empty item ends the list. Tab falls through to normal focus behavior
+  // outside lists and tables. -----
+  var LIST_RE = /^(\s*)([-*+]|\d+[.)])(\s+\[[ xX]\])?(\s+)(.*)$/;
+
+  function handleListEnter() {
+    if (editor.selectionStart !== editor.selectionEnd) return false;
+    var r = getCurrentLineRange();
+    var m = r.line.match(LIST_RE);
+    if (!m) return false;
+    var contentStart = r.lineStart + m[1].length + m[2].length + (m[3] || "").length + m[4].length;
+    if (editor.selectionStart < contentStart) return false;
+    if (!m[5].trim()) {
+      // Empty item: end the list by clearing the marker
+      saveUndoBeforeProgrammaticChange();
+      var text = editor.value;
+      editor.value = text.slice(0, r.lineStart) + text.slice(r.lineEnd);
+      lastSavedValue = editor.value;
+      editor.setSelectionRange(r.lineStart, r.lineStart);
+      setDirty(true);
+      scheduleRenderPreview();
+      updateStatus();
+      return true;
+    }
+    var marker = m[2];
+    if (/^\d+[.)]$/.test(marker)) {
+      marker = (parseInt(marker, 10) + 1) + marker.charAt(marker.length - 1);
+    }
+    insertAtCursor("\n" + m[1] + marker + (m[3] ? " [ ]" : "") + " ");
+    return true;
+  }
+
+  function handleListIndent(outdent) {
+    var r = getCurrentLineRange();
+    if (!LIST_RE.test(r.line)) return false;
+    saveUndoBeforeProgrammaticChange();
+    var text = editor.value;
+    var pos = editor.selectionStart;
+    var newLine, delta;
+    if (outdent) {
+      var lead = r.line.match(/^ {1,2}/);
+      if (!lead) return true; // consume Tab so focus does not jump mid-list
+      newLine = r.line.slice(lead[0].length);
+      delta = -lead[0].length;
+    } else {
+      newLine = "  " + r.line;
+      delta = 2;
+    }
+    editor.value = text.slice(0, r.lineStart) + newLine + text.slice(r.lineEnd);
+    lastSavedValue = editor.value;
+    var np = Math.max(r.lineStart, pos + delta);
+    editor.setSelectionRange(np, np);
+    setDirty(true);
+    scheduleRenderPreview();
+    updateStatus();
+    return true;
+  }
+
+  // ----- Tables: Tab moves between cells, plus a format action that aligns
+  // every pipe in the table block around the cursor. -----
+  function getTableBlockRange() {
+    var text = editor.value;
+    var r = getCurrentLineRange();
+    if (!/^\s*\|/.test(r.line)) return null;
+    var start = r.lineStart;
+    while (start > 0) {
+      var prevStart = text.lastIndexOf("\n", start - 2) + 1;
+      var prevLine = text.slice(prevStart, start - 1);
+      if (!/^\s*\|/.test(prevLine)) break;
+      start = prevStart;
+    }
+    var end = r.lineEnd;
+    while (end < text.length) {
+      var nextEnd = text.indexOf("\n", end + 1);
+      if (nextEnd === -1) nextEnd = text.length;
+      var nextLine = text.slice(end + 1, nextEnd);
+      if (!/^\s*\|/.test(nextLine)) break;
+      end = nextEnd;
+    }
+    return { start: start, end: end };
+  }
+
+  function isTableSeparatorLine(line) {
+    return /^\s*\|?[\s:\-|]+\|?\s*$/.test(line) && line.indexOf("-") !== -1;
+  }
+
+  function handleTableTab(back) {
+    var block = getTableBlockRange();
+    if (!block) return false;
+    var text = editor.value;
+    var pos = editor.selectionStart;
+    var starts = [];
+    var lineStart = block.start;
+    while (lineStart <= block.end) {
+      var lineEnd = text.indexOf("\n", lineStart);
+      if (lineEnd === -1 || lineEnd > block.end) lineEnd = block.end;
+      var line = text.slice(lineStart, lineEnd);
+      if (!isTableSeparatorLine(line)) {
+        for (var i = 0; i < line.length; i++) {
+          if (line.charAt(i) !== "|") continue;
+          var cs = lineStart + i + 1;
+          if (text.charAt(cs) === " ") cs++;
+          if (cs < lineEnd) starts.push(cs);
+        }
+      }
+      lineStart = lineEnd + 1;
+      if (lineEnd >= block.end) break;
+    }
+    if (!starts.length) return false;
+    var target = null;
+    if (back) {
+      for (var j = starts.length - 1; j >= 0; j--) { if (starts[j] < pos) { target = starts[j]; break; } }
+    } else {
+      for (var k = 0; k < starts.length; k++) { if (starts[k] > pos) { target = starts[k]; break; } }
+    }
+    if (target == null) return false;
+    editor.setSelectionRange(target, target);
+    updateStatus();
+    return true;
+  }
+
+  function formatTableAtCursor() {
+    var block = getTableBlockRange();
+    if (!block) { showError("Place the cursor inside a table first."); return; }
+    var text = editor.value;
+    var lines = text.slice(block.start, block.end).split("\n");
+    var rows = lines.map(function (line) {
+      return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(function (c) { return c.trim(); });
+    });
+    var isSep = lines.map(isTableSeparatorLine);
+    var cols = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+    var widths = [];
+    for (var c = 0; c < cols; c++) {
+      var w = 3;
+      rows.forEach(function (r, ri) { if (!isSep[ri] && r[c]) w = Math.max(w, r[c].length); });
+      widths.push(w);
+    }
+    var out = lines.map(function (line, ri) {
+      var cells = [];
+      for (var c2 = 0; c2 < cols; c2++) {
+        var cell = rows[ri][c2] || "";
+        if (isSep[ri]) {
+          var left = /^:/.test(cell), right = /:$/.test(cell);
+          var body = new Array(Math.max(3, widths[c2] - (left ? 1 : 0) - (right ? 1 : 0)) + 1).join("-");
+          cell = (left ? ":" : "") + body + (right ? ":" : "");
+          while (cell.length < widths[c2]) cell += "-";
+        } else {
+          while (cell.length < widths[c2]) cell += " ";
+        }
+        cells.push(cell);
+      }
+      return "| " + cells.join(" | ") + " |";
+    });
+    saveUndoBeforeProgrammaticChange();
+    editor.value = text.slice(0, block.start) + out.join("\n") + text.slice(block.end);
+    lastSavedValue = editor.value;
+    editor.setSelectionRange(block.start, block.start);
+    editor.focus();
+    setDirty(true);
+    renderPreview();
+    updateStatus();
+    showStatus("Table formatted", "success");
+  }
+
+  var btnFormatTable = document.getElementById("btnFormatTable");
+  if (btnFormatTable) btnFormatTable.addEventListener("click", formatTableAtCursor);
+
+  editor.addEventListener("keydown", function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Enter" && !e.shiftKey) {
+      if (handleListEnter()) e.preventDefault();
+      return;
+    }
+    if (e.key === "Tab") {
+      if (handleTableTab(e.shiftKey) || handleListIndent(e.shiftKey)) e.preventDefault();
+    }
+  });
+
+  // ----- Document library (localStorage) -----
+  var DOCS_KEY = "mdEditorDocs";
+
+  function getLibraryDocs() {
+    try { return JSON.parse(localStorage.getItem(DOCS_KEY)) || []; } catch (e) { return []; }
+  }
+
+  function setLibraryDocs(docs) {
+    try { localStorage.setItem(DOCS_KEY, JSON.stringify(docs)); return true; }
+    catch (e) { showError("Could not save — browser storage is full."); return false; }
+  }
+
+  function renderLibrary() {
+    var list = document.getElementById("libraryList");
+    if (!list) return;
+    var query = "";
+    var searchEl = document.getElementById("librarySearch");
+    if (searchEl) query = searchEl.value.trim().toLowerCase();
+    var docs = getLibraryDocs().filter(function (d) {
+      if (!query) return true;
+      return d.name.toLowerCase().indexOf(query) !== -1 || d.content.toLowerCase().indexOf(query) !== -1;
+    }).sort(function (a, b) { return b.updated - a.updated; });
+    list.innerHTML = "";
+    if (!docs.length) {
+      list.innerHTML = '<li class="library-empty">' + (query ? "No documents match." : "No saved documents yet.") + "</li>";
+      return;
+    }
+    docs.forEach(function (doc) {
+      var li = document.createElement("li");
+      li.className = "library-item";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "library-item-btn";
+      btn.title = 'Load "' + doc.name + '"';
+      var nameSpan = document.createElement("span");
+      nameSpan.className = "library-item-name";
+      nameSpan.textContent = doc.name;
+      var dateSpan = document.createElement("span");
+      dateSpan.className = "library-item-date";
+      dateSpan.textContent = new Date(doc.updated).toLocaleDateString() + " · " + countWords(doc.content) + " words";
+      btn.appendChild(nameSpan);
+      btn.appendChild(dateSpan);
+      btn.addEventListener("click", function () { loadLibraryDoc(doc.id); });
+      var del = document.createElement("button");
+      del.type = "button";
+      del.className = "library-item-delete";
+      del.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">delete</span>';
+      del.setAttribute("aria-label", 'Delete "' + doc.name + '" from library');
+      del.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!confirm('Delete "' + doc.name + '" from the library?')) return;
+        setLibraryDocs(getLibraryDocs().filter(function (d) { return d.id !== doc.id; }));
+        renderLibrary();
+      });
+      li.appendChild(btn);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  function saveToLibrary() {
+    var name = getDocDisplayName();
+    var docs = getLibraryDocs();
+    var existing = null;
+    for (var i = 0; i < docs.length; i++) { if (docs[i].name === name) { existing = docs[i]; break; } }
+    if (existing) {
+      if (!confirm('"' + name + '" already exists in the library. Overwrite it?')) return;
+      existing.content = editor.value;
+      existing.updated = Date.now();
+    } else {
+      docs.push({ id: "doc-" + Date.now() + "-" + Math.floor(Math.random() * 1e6), name: name, content: editor.value, updated: Date.now() });
+    }
+    if (setLibraryDocs(docs)) {
+      renderLibrary();
+      showStatus('Saved "' + name + '" to library', "success");
+    }
+  }
+
+  function loadLibraryDoc(id) {
+    var doc = null;
+    getLibraryDocs().forEach(function (d) { if (d.id === id) doc = d; });
+    if (!doc) return;
+    if (isDirty && !confirm('You have unsaved changes. Load "' + doc.name + '" anyway?')) return;
+    linkedFileHandle = null;
+    loadOpenedText(doc.content, doc.name);
+  }
+
+  var btnLibSave = document.getElementById("btnLibSave");
+  if (btnLibSave) btnLibSave.addEventListener("click", saveToLibrary);
+  renderLibrary();
+
+  // ----- Command palette (Ctrl+Shift+P) -----
+  var cmdPalette = document.getElementById("cmdPalette");
+  var cmdInput = document.getElementById("cmdPaletteInput");
+  var cmdList = document.getElementById("cmdPaletteList");
+  var cmdActions = [];
+  var cmdFiltered = [];
+  var cmdIndex = 0;
+  var cmdReturnFocus = null;
+
+  function applyThemeChoice(t) {
+    setTheme(t);
+    document.querySelectorAll(".theme-select-btn").forEach(function (btn) {
+      var active = btn.dataset.theme === t;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-checked", String(active));
+    });
+    renderPreview();
+  }
+
+  function toggleSettingCheckbox(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.checked = !el.checked;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function buildPaletteActions() {
+    return [
+      { label: "New document", hint: "Ctrl+N", run: doNew },
+      { label: "Open file…", hint: "Ctrl+O", run: doOpen },
+      { label: "Save", hint: "Ctrl+S", run: doSave },
+      { label: "Save current to library", run: saveToLibrary },
+      { label: "Export as HTML", run: function () { document.getElementById("btnExportHtml").click(); } },
+      { label: "Export as PDF", run: function () { document.getElementById("btnExportPdf").click(); } },
+      { label: "Export as Word", run: function () { document.getElementById("btnExportWord").click(); } },
+      { label: "Copy as HTML", run: function () { document.getElementById("btnCopyHtml").click(); } },
+      { label: "Copy as Markdown", run: function () { document.getElementById("btnCopyMd").click(); } },
+      { label: "Print", run: function () { document.getElementById("btnPrint").click(); } },
+      { label: "View: edit only", run: function () { setViewMode("edit"); } },
+      { label: "View: split", run: function () { setViewMode("split"); } },
+      { label: "View: preview only", run: function () { setViewMode("preview"); } },
+      { label: "Theme: dark", run: function () { applyThemeChoice("dark"); } },
+      { label: "Theme: light", run: function () { applyThemeChoice("light"); } },
+      { label: "Theme: prishtina", run: function () { applyThemeChoice("prishtina"); } },
+      { label: "Toggle focus mode", run: function () { toggleSettingCheckbox("settingFocusMode"); } },
+      { label: "Toggle zen mode", run: function () { toggleSettingCheckbox("settingZenMode"); } },
+      { label: "Toggle preview always light", run: function () { toggleSettingCheckbox("settingPreviewLight"); } },
+      { label: "Toggle markdown highlighting", run: function () { toggleSettingCheckbox("settingEditorHighlight"); } },
+      { label: "Toggle scroll lock", run: function () { toggleSettingCheckbox("settingScrollLock"); } },
+      { label: "Toggle auto-save draft", run: function () { toggleSettingCheckbox("settingAutoSaveDraft"); } },
+      { label: "Insert table", run: function () { applyFormatting({ insertType: "table" }); } },
+      { label: "Format table at cursor", run: formatTableAtCursor },
+      { label: "Find", hint: "Ctrl+F", run: function () { showFindBar(false); } },
+      { label: "Find and replace", hint: "Ctrl+H", run: function () { showFindBar(true); } },
+      { label: "Copy share link", run: copyShareLink },
+      { label: "Export library backup", run: exportLibraryBackup },
+      { label: "Import library backup", run: function () { document.getElementById("libImportFile").click(); } },
+      { label: "Toggle typewriter mode", run: function () { toggleSettingCheckbox("settingTypewriter"); } },
+      { label: "Heading 1", hint: "Ctrl+Alt+1", run: function () { setHeadingLevel(1); } },
+      { label: "Heading 2", hint: "Ctrl+Alt+2", run: function () { setHeadingLevel(2); } },
+      { label: "Heading 3", hint: "Ctrl+Alt+3", run: function () { setHeadingLevel(3); } },
+      { label: "Back to top", run: function () { editor.scrollTop = 0; if (previewWrap) previewWrap.scrollTop = 0; } }
+    ];
+  }
+
+  function fuzzyScore(query, label) {
+    query = query.toLowerCase();
+    label = label.toLowerCase();
+    if (!query) return 1;
+    var qi = 0, score = 0, streak = 0;
+    for (var i = 0; i < label.length && qi < query.length; i++) {
+      if (label.charAt(i) === query.charAt(qi)) {
+        qi++;
+        streak++;
+        score += 1 + streak + (i === 0 || label.charAt(i - 1) === " " ? 3 : 0);
+      } else {
+        streak = 0;
+      }
+    }
+    return qi === query.length ? score : 0;
+  }
+
+  function openPalette() {
+    if (!cmdPalette || !cmdInput) return;
+    cmdReturnFocus = document.activeElement;
+    cmdActions = buildPaletteActions();
+    cmdPalette.classList.remove("hidden");
+    cmdInput.value = "";
+    filterPalette();
+    cmdInput.focus();
+  }
+
+  function closePalette() {
+    if (!cmdPalette) return;
+    cmdPalette.classList.add("hidden");
+    if (cmdReturnFocus && cmdReturnFocus.focus) cmdReturnFocus.focus();
+  }
+
+  function filterPalette() {
+    var q = cmdInput.value.trim();
+    cmdFiltered = cmdActions
+      .map(function (a) { return { action: a, score: fuzzyScore(q, a.label) }; })
+      .filter(function (x) { return x.score > 0; })
+      .sort(function (a, b) { return b.score - a.score; })
+      .map(function (x) { return x.action; });
+    cmdIndex = 0;
+    renderPaletteList();
+  }
+
+  function renderPaletteList() {
+    if (!cmdList) return;
+    cmdList.innerHTML = "";
+    if (!cmdFiltered.length) {
+      var empty = document.createElement("li");
+      empty.className = "cmd-palette-empty";
+      empty.textContent = "No matching commands.";
+      cmdList.appendChild(empty);
+      return;
+    }
+    cmdFiltered.forEach(function (a, i) {
+      var li = document.createElement("li");
+      li.className = "cmd-palette-item" + (i === cmdIndex ? " selected" : "");
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", String(i === cmdIndex));
+      var label = document.createElement("span");
+      label.textContent = a.label;
+      li.appendChild(label);
+      if (a.hint) {
+        var hint = document.createElement("span");
+        hint.className = "cmd-palette-hint";
+        hint.textContent = a.hint;
+        li.appendChild(hint);
+      }
+      li.addEventListener("click", function () { runPaletteAction(a); });
+      cmdList.appendChild(li);
+    });
+    var sel = cmdList.querySelector(".selected");
+    if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+  }
+
+  function runPaletteAction(a) {
+    closePalette();
+    setTimeout(function () { a.run(); }, 0);
+  }
+
+  if (cmdInput) {
+    cmdInput.addEventListener("input", filterPalette);
+    cmdInput.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown") { cmdIndex = Math.min(cmdFiltered.length - 1, cmdIndex + 1); renderPaletteList(); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { cmdIndex = Math.max(0, cmdIndex - 1); renderPaletteList(); e.preventDefault(); }
+      else if (e.key === "Enter") { if (cmdFiltered[cmdIndex]) runPaletteAction(cmdFiltered[cmdIndex]); e.preventDefault(); }
+      else if (e.key === "Escape") { closePalette(); e.preventDefault(); e.stopPropagation(); }
+    });
+  }
+  var cmdBackdrop = document.getElementById("cmdPaletteBackdrop");
+  if (cmdBackdrop) cmdBackdrop.addEventListener("click", closePalette);
+  var btnCmdPalette = document.getElementById("btnCmdPalette");
+  if (btnCmdPalette) btnCmdPalette.addEventListener("click", openPalette);
+
+  // ----- Editor markdown highlighting: a <pre> overlay painted behind the
+  // (transparent-text) textarea. Metrics are copied from the textarea so the
+  // glyphs line up; large documents fall back to plain text. -----
+  var HIGHLIGHT_KEY = "mdEditorHighlight";
+  var HIGHLIGHT_MAX_CHARS = 80000;
+  var editorHighlight = document.getElementById("editorHighlight");
+  var overlayTimer = null;
+
+  function isHighlightEnabled() {
+    try { return localStorage.getItem(HIGHLIGHT_KEY) !== "false"; } catch (e) { return true; }
+  }
+
+  function escapeForOverlay(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function highlightInline(escaped) {
+    return escaped
+      .replace(/(`+)([^`]+?)\1/g, '<span class="mdh-code">$1$2$1</span>')
+      .replace(/(!?\[)([^\]]*)(\]\()([^)]*)(\))/g, '<span class="mdh-marker">$1</span><span class="mdh-link">$2</span><span class="mdh-marker">$3</span><span class="mdh-url">$4</span><span class="mdh-marker">$5</span>')
+      .replace(/(\*\*|__)(?=\S)([^<>]*?\S)\1/g, '<span class="mdh-bold">$1$2$1</span>')
+      .replace(/~~(?=\S)([^<>~]*?\S)~~/g, '<span class="mdh-del">~~$1~~</span>')
+      .replace(/(^|[^*_\w])(\*|_)(?=\S)([^<>*_]*?\S)\2(?![\w*_])/g, '$1<span class="mdh-italic">$2$3$2</span>');
+  }
+
+  function buildOverlayHtml(text, activeLine) {
+    var lines = text.split("\n");
+    var out = [];
+    var inFence = false;
+    var inFrontmatter = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var esc = escapeForOverlay(line);
+      var html = null;
+      // YAML frontmatter: dim the whole block at the top of the document
+      if (i === 0 && /^---\s*$/.test(line)) {
+        inFrontmatter = true;
+        html = '<span class="mdh-fence">' + esc + "</span>";
+      } else if (inFrontmatter) {
+        if (/^---\s*$/.test(line)) {
+          inFrontmatter = false;
+          html = '<span class="mdh-fence">' + esc + "</span>";
+        } else {
+          html = '<span class="mdh-frontmatter">' + esc + "</span>";
+        }
+      } else if (/^(\s*)(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        html = '<span class="mdh-fence">' + esc + "</span>";
+      } else if (inFence) {
+        html = '<span class="mdh-codeblock">' + esc + "</span>";
+      } else {
+        var m;
+        if ((m = line.match(/^(#{1,6})(\s+)(.*)$/))) {
+          html = '<span class="mdh-heading"><span class="mdh-marker">' + m[1] + "</span>" + m[2] + highlightInline(escapeForOverlay(m[3])) + "</span>";
+        } else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+          html = '<span class="mdh-hr">' + esc + "</span>";
+        } else if ((m = line.match(/^(\s*>+\s?)(.*)$/))) {
+          html = '<span class="mdh-quote"><span class="mdh-marker">' + escapeForOverlay(m[1]) + "</span>" + highlightInline(escapeForOverlay(m[2])) + "</span>";
+        } else if ((m = line.match(LIST_RE))) {
+          html = m[1] + '<span class="mdh-list-marker">' + escapeForOverlay(m[2] + (m[3] || "")) + "</span>" + m[4] + highlightInline(escapeForOverlay(m[5]));
+        } else if (/^\s*\|/.test(line)) {
+          html = '<span class="mdh-table">' + esc.replace(/\|/g, '<span class="mdh-marker">|</span>') + "</span>";
+        } else {
+          html = highlightInline(esc);
+        }
+      }
+      if (i === activeLine) {
+        html = '<span class="mdh-active">' + (html === "" ? " " : html) + "</span>";
+      }
+      out.push(html);
+    }
+    return out.join("\n") + "\n";
+  }
+
+  function syncOverlayMetrics() {
+    if (!editorHighlight) return;
+    var cs = getComputedStyle(editor);
+    ["fontFamily", "fontSize", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].forEach(function (p) {
+      editorHighlight.style[p] = cs[p];
+    });
+  }
+
+  function syncOverlayScroll() {
+    if (!editorHighlight) return;
+    editorHighlight.scrollTop = editor.scrollTop;
+    editorHighlight.scrollLeft = editor.scrollLeft;
+  }
+
+  var lastActiveLine = -1;
+
+  function currentCaretLine() {
+    if (document.activeElement !== editor) return -1;
+    return editor.value.slice(0, editor.selectionStart).split("\n").length - 1;
+  }
+
+  function refreshOverlay() {
+    if (!editorHighlight) return;
+    var enabled = isHighlightEnabled() && editor.value.length <= HIGHLIGHT_MAX_CHARS;
+    document.body.classList.toggle("editor-highlight-on", enabled);
+    if (!enabled) {
+      editorHighlight.innerHTML = "";
+      return;
+    }
+    syncOverlayMetrics();
+    lastActiveLine = currentCaretLine();
+    editorHighlight.innerHTML = buildOverlayHtml(editor.value, lastActiveLine);
+    syncOverlayScroll();
+  }
+
+  function scheduleOverlay() {
+    clearTimeout(overlayTimer);
+    overlayTimer = setTimeout(refreshOverlay, 30);
+  }
+
+  // Re-highlight the active line when the caret moves without typing
+  function maybeRefreshActiveLine() {
+    if (!document.body.classList.contains("editor-highlight-on")) return;
+    if (currentCaretLine() !== lastActiveLine) scheduleOverlay();
+  }
+
+  editor.addEventListener("input", scheduleOverlay);
+  editor.addEventListener("scroll", syncOverlayScroll);
+  editor.addEventListener("keyup", maybeRefreshActiveLine);
+  editor.addEventListener("click", maybeRefreshActiveLine);
+  editor.addEventListener("focus", scheduleOverlay);
+  editor.addEventListener("blur", scheduleOverlay);
+  window.addEventListener("resize", scheduleOverlay);
+
+  var settingEditorHighlightEl = document.getElementById("settingEditorHighlight");
+  if (settingEditorHighlightEl) {
+    settingEditorHighlightEl.checked = isHighlightEnabled();
+    settingEditorHighlightEl.addEventListener("change", function () {
+      try { localStorage.setItem(HIGHLIGHT_KEY, this.checked ? "true" : "false"); } catch (e) {}
+      refreshOverlay();
+    });
+  }
+
+  // Theme, font size, and preview-light changes affect overlay metrics and
+  // mermaid colors — re-render on top of their existing handlers.
+  document.querySelectorAll(".theme-select-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      renderPreview();
+      scheduleOverlay();
+    });
+  });
+  if (settingPreviewLightEl) settingPreviewLightEl.addEventListener("change", function () { renderPreview(); });
+  if (settingFontSizeEl) settingFontSizeEl.addEventListener("change", scheduleOverlay);
+  if (btnUndo) btnUndo.addEventListener("click", scheduleOverlay);
+  if (btnRedo) btnRedo.addEventListener("click", scheduleOverlay);
+
+  // Cursor position / selection stats in the status bar
+  editor.addEventListener("keyup", updateStatus);
+  editor.addEventListener("click", updateStatus);
+  editor.addEventListener("select", updateStatus);
+  editor.addEventListener("focus", updateStatus);
+  editor.addEventListener("blur", updateStatus);
+
+  // ----- KaTeX math (lazy: the library + fonts load only when a document
+  // actually contains $...$ / $$...$$) -----
+  var katexLoading = null;
+
+  function loadKatex() {
+    if (window.katex) return Promise.resolve(window.katex);
+    if (katexLoading) return katexLoading;
+    katexLoading = new Promise(function (resolve, reject) {
+      var link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "vendor/katex/katex.min.css";
+      document.head.appendChild(link);
+      var s = document.createElement("script");
+      s.src = "vendor/katex/katex.min.js";
+      s.onload = function () { resolve(window.katex); };
+      s.onerror = function () { katexLoading = null; reject(new Error("katex failed to load")); };
+      document.head.appendChild(s);
+    });
+    return katexLoading;
+  }
+
+  function renderMathIn(container) {
+    var nodes = container.querySelectorAll(".math-tex");
+    if (!nodes.length) return;
+    loadKatex().then(function (katex) {
+      nodes.forEach(function (el) {
+        var tex = el.getAttribute("data-tex") || "";
+        try {
+          katex.render(tex, el, { displayMode: el.classList.contains("math-display"), throwOnError: false });
+        } catch (e) {
+          el.textContent = tex;
+        }
+      });
+    }).catch(function () {
+      nodes.forEach(function (el) { el.textContent = el.getAttribute("data-tex") || ""; });
+    });
+  }
+
+  // ----- Task checkboxes in the preview toggle the source -----
+  function setupTaskCheckboxes(container) {
+    var boxes = container.querySelectorAll('li > input[type="checkbox"]');
+    boxes.forEach(function (box, i) {
+      box.disabled = false;
+      box.addEventListener("change", function () { toggleTaskInSource(i, box.checked); });
+    });
+  }
+
+  function toggleTaskInSource(index, checked) {
+    var re = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/gm;
+    var text = editor.value;
+    var m, i = 0;
+    while ((m = re.exec(text)) !== null) {
+      if (i === index) {
+        saveUndoBeforeProgrammaticChange();
+        var pos = m.index + m[1].length;
+        editor.value = text.slice(0, pos) + (checked ? "x" : " ") + text.slice(pos + 1);
+        lastSavedValue = editor.value;
+        setDirty(true);
+        scheduleRenderPreview();
+        updateStatus();
+        return;
+      }
+      i++;
+    }
+  }
+
+  // ----- Copy button + language label on preview code blocks -----
+  function setupCodeCopyButtons(container) {
+    if (container !== preview) return; // preview only — not exports or PDF
+    container.querySelectorAll("pre").forEach(function (pre) {
+      var code = pre.querySelector("code");
+      if (!code || pre.querySelector(".code-copy-btn")) return;
+      var lang = (code.className.match(/language-([\w+-]+)/) || [])[1];
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "code-copy-btn";
+      var idleLabel = lang ? lang + " · copy" : "copy";
+      btn.textContent = idleLabel;
+      btn.setAttribute("aria-label", "Copy code block");
+      btn.addEventListener("click", function () {
+        navigator.clipboard.writeText(code.textContent).then(function () {
+          btn.textContent = "copied!";
+          setTimeout(function () { btn.textContent = idleLabel; }, 1200);
+        }).catch(function () { showError("Copy failed."); });
+      });
+      pre.appendChild(btn);
+    });
+  }
+
+  // ----- Auto-pair and wrap-selection -----
+  var WRAP_PAIRS = { "*": "*", "_": "_", "`": "`", "~": "~", "(": ")", "[": "]", "{": "}", '"': '"', "'": "'" };
+  var AUTOCLOSE_PAIRS = { "(": ")", "[": "]", "{": "}" };
+
+  editor.addEventListener("keydown", function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var close = WRAP_PAIRS[e.key];
+    if (!close) return;
+    var start = editor.selectionStart, end = editor.selectionEnd;
+    if (start !== end) {
+      // Wrap the selection instead of replacing it
+      e.preventDefault();
+      saveUndoBeforeProgrammaticChange();
+      var text = editor.value;
+      editor.value = text.slice(0, start) + e.key + text.slice(start, end) + close + text.slice(end);
+      lastSavedValue = editor.value;
+      editor.setSelectionRange(start + 1, end + 1);
+      setDirty(true);
+      scheduleRenderPreview();
+      updateStatus();
+      return;
+    }
+    var autoClose = AUTOCLOSE_PAIRS[e.key];
+    if (autoClose) {
+      var nextCh = editor.value.charAt(start);
+      if (nextCh === "" || /[\s)\]}.,;:!?]/.test(nextCh)) {
+        e.preventDefault();
+        saveUndoBeforeProgrammaticChange();
+        var t = editor.value;
+        editor.value = t.slice(0, start) + e.key + autoClose + t.slice(start);
+        lastSavedValue = editor.value;
+        editor.setSelectionRange(start + 1, start + 1);
+        setDirty(true);
+        scheduleRenderPreview();
+        updateStatus();
+      }
+    }
+  });
+
+  // ----- Move line up/down (Alt+Arrow) -----
+  function moveCurrentLine(dir) {
+    var r = getCurrentLineRange();
+    var text = editor.value;
+    var col = editor.selectionStart - r.lineStart;
+    var newText, np;
+    if (dir < 0) {
+      if (r.lineStart === 0) return;
+      var prevStart = text.lastIndexOf("\n", r.lineStart - 2) + 1;
+      var prevLine = text.slice(prevStart, r.lineStart - 1);
+      saveUndoBeforeProgrammaticChange();
+      newText = text.slice(0, prevStart) + r.line + "\n" + prevLine + text.slice(r.lineEnd);
+      np = prevStart + Math.min(col, r.line.length);
+    } else {
+      if (r.lineEnd >= text.length) return;
+      var nextEnd = text.indexOf("\n", r.lineEnd + 1);
+      if (nextEnd === -1) nextEnd = text.length;
+      var nextLine = text.slice(r.lineEnd + 1, nextEnd);
+      saveUndoBeforeProgrammaticChange();
+      newText = text.slice(0, r.lineStart) + nextLine + "\n" + r.line + text.slice(nextEnd);
+      np = r.lineStart + nextLine.length + 1 + Math.min(col, r.line.length);
+    }
+    editor.value = newText;
+    lastSavedValue = newText;
+    editor.setSelectionRange(np, np);
+    setDirty(true);
+    scheduleRenderPreview();
+    updateStatus();
+    scheduleOverlay();
+  }
+
+  editor.addEventListener("keydown", function (e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key === "ArrowUp") { e.preventDefault(); moveCurrentLine(-1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); moveCurrentLine(1); }
+  });
+
+  // ----- Heading level (Ctrl+Alt+1..6); same level again removes it -----
+  function setHeadingLevel(level) {
+    var r = getCurrentLineRange();
+    saveUndoBeforeProgrammaticChange();
+    var stripped = r.line.replace(/^#{1,6}\s+/, "");
+    var newLine = new RegExp("^#{" + level + "}\\s").test(r.line)
+      ? stripped
+      : new Array(level + 1).join("#") + " " + stripped;
+    var text = editor.value;
+    editor.value = text.slice(0, r.lineStart) + newLine + text.slice(r.lineEnd);
+    lastSavedValue = editor.value;
+    var np = r.lineStart + newLine.length;
+    editor.setSelectionRange(np, np);
+    editor.focus();
+    setDirty(true);
+    scheduleRenderPreview();
+    updateStatus();
+  }
+
+  // ----- Typewriter mode: keep the caret line vertically centered -----
+  var TYPEWRITER_KEY = "mdEditorTypewriter";
+
+  function isTypewriterEnabled() {
+    try { return localStorage.getItem(TYPEWRITER_KEY) === "true"; } catch (e) { return false; }
+  }
+
+  function typewriterScroll() {
+    if (!isTypewriterEnabled()) return;
+    var style = getComputedStyle(editor);
+    var lineHeight = parseInt(style.lineHeight, 10);
+    if (isNaN(lineHeight) || lineHeight <= 0) lineHeight = Math.round(parseInt(style.fontSize, 10) * 1.5) || 20;
+    var line = editor.value.slice(0, editor.selectionStart).split("\n").length - 1;
+    editor.scrollTop = Math.max(0, line * lineHeight - editor.clientHeight / 2 + lineHeight);
+  }
+
+  editor.addEventListener("input", typewriterScroll);
+
+  var settingTypewriterEl = document.getElementById("settingTypewriter");
+  if (settingTypewriterEl) {
+    settingTypewriterEl.checked = isTypewriterEnabled();
+    settingTypewriterEl.addEventListener("change", function () {
+      try { localStorage.setItem(TYPEWRITER_KEY, this.checked ? "true" : "false"); } catch (e) {}
+      if (this.checked) typewriterScroll();
+    });
+  }
+
+  // ----- Remember cursor & scroll position per document name -----
+  var DOCSTATE_KEY = "mdEditorDocState";
+
+  function saveDocState() {
+    try {
+      var all = JSON.parse(localStorage.getItem(DOCSTATE_KEY)) || {};
+      all[getDocDisplayName()] = { cursor: editor.selectionStart, scroll: editor.scrollTop, ts: Date.now() };
+      var keys = Object.keys(all);
+      if (keys.length > 30) {
+        keys.sort(function (a, b) { return (all[a].ts || 0) - (all[b].ts || 0); });
+        keys.slice(0, keys.length - 30).forEach(function (k) { delete all[k]; });
+      }
+      localStorage.setItem(DOCSTATE_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+
+  function restoreDocState() {
+    try {
+      var all = JSON.parse(localStorage.getItem(DOCSTATE_KEY)) || {};
+      var st = all[getDocDisplayName()];
+      if (!st) return;
+      var pos = Math.min(st.cursor || 0, editor.value.length);
+      editor.setSelectionRange(pos, pos);
+      editor.scrollTop = st.scroll || 0;
+    } catch (e) {}
+  }
+
+  var saveDocStateThrottled = throttle(saveDocState, 1500);
+  editor.addEventListener("keyup", saveDocStateThrottled);
+  editor.addEventListener("scroll", saveDocStateThrottled);
+  window.addEventListener("beforeunload", saveDocState);
+
+  // ----- Library search, backup and restore -----
+  var librarySearchEl = document.getElementById("librarySearch");
+  if (librarySearchEl) librarySearchEl.addEventListener("input", renderLibrary);
+
+  function exportLibraryBackup() {
+    var docs = getLibraryDocs();
+    if (!docs.length) { showError("The library is empty — nothing to back up."); return; }
+    var payload = { app: "markdown-editor", version: 1, exportedAt: new Date().toISOString(), docs: docs };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "markdown-library-backup.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showStatus("Backup downloaded (" + docs.length + " documents)", "success");
+  }
+
+  function importLibraryBackup(file) {
+    file.text().then(function (raw) {
+      var data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.docs)) throw new Error("bad format");
+      var current = getLibraryDocs();
+      var byName = {};
+      current.forEach(function (d) { byName[d.name] = d; });
+      var added = 0, updated = 0;
+      data.docs.forEach(function (d, i) {
+        if (!d || typeof d.content !== "string" || !d.name) return;
+        var existing = byName[d.name];
+        if (existing) {
+          if ((d.updated || 0) > (existing.updated || 0)) {
+            existing.content = d.content;
+            existing.updated = d.updated;
+            updated++;
+          }
+        } else {
+          current.push({ id: "doc-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1e6), name: d.name, content: d.content, updated: d.updated || Date.now() });
+          added++;
+        }
+      });
+      if (setLibraryDocs(current)) {
+        renderLibrary();
+        showStatus("Imported: " + added + " new, " + updated + " updated", "success");
+      }
+    }).catch(function () {
+      showError("Not a valid library backup file.");
+    });
+  }
+
+  var btnLibExport = document.getElementById("btnLibExport");
+  var btnLibImport = document.getElementById("btnLibImport");
+  var libImportFile = document.getElementById("libImportFile");
+  if (btnLibExport) btnLibExport.addEventListener("click", exportLibraryBackup);
+  if (btnLibImport && libImportFile) {
+    btnLibImport.addEventListener("click", function () { libImportFile.click(); });
+    libImportFile.addEventListener("change", function () {
+      if (this.files[0]) importLibraryBackup(this.files[0]);
+      this.value = "";
+    });
+  }
+
+  // ----- Draft history: surface the snapshots that auto-save already keeps -----
+  function renderDraftHistory() {
+    var list = document.getElementById("draftHistoryList");
+    if (!list) return;
+    var history = [];
+    try { history = JSON.parse(localStorage.getItem(DRAFT_HISTORY_KEY)) || []; } catch (e) {}
+    list.innerHTML = "";
+    if (!history.length) {
+      list.innerHTML = '<li class="library-empty">No snapshots yet.</li>';
+      return;
+    }
+    history.forEach(function (snap) {
+      var li = document.createElement("li");
+      li.className = "library-item";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "library-item-btn";
+      var nameSpan = document.createElement("span");
+      nameSpan.className = "library-item-name";
+      nameSpan.textContent = new Date(snap.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " · " + new Date(snap.ts).toLocaleDateString();
+      var dateSpan = document.createElement("span");
+      dateSpan.className = "library-item-date";
+      dateSpan.textContent = countWords(snap.value || "") + " words";
+      btn.appendChild(nameSpan);
+      btn.appendChild(dateSpan);
+      btn.title = "Restore this snapshot";
+      btn.addEventListener("click", function () {
+        if (isDirty && !confirm("Replace the current document with this snapshot?")) return;
+        saveUndoBeforeProgrammaticChange();
+        editor.value = snap.value || "";
+        lastSavedValue = editor.value;
+        setDirty(true);
+        renderPreview();
+        updateStatus();
+        showStatus("Snapshot restored", "success");
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  }
+  renderDraftHistory();
+
+  // ----- Share as link: the whole document, compressed into the URL hash.
+  // No server involved — the link IS the document. -----
+  function copyShareLink() {
+    if (typeof LZString === "undefined") { showError("Share is unavailable (library missing)."); return; }
+    var packed = LZString.compressToEncodedURIComponent(JSON.stringify({ n: getDocDisplayName(), c: editor.value }));
+    if (packed.length > 12000) { showError("Document too large to share as a link — export a file instead."); return; }
+    var url = location.origin + location.pathname + "#share=" + packed;
+    navigator.clipboard.writeText(url).then(function () {
+      showStatus("Share link copied to clipboard", "success");
+    }).catch(function () { showError("Could not copy the link."); });
+  }
+
+  var btnShareLink = document.getElementById("btnShareLink");
+  if (btnShareLink) btnShareLink.addEventListener("click", copyShareLink);
+
+  function loadSharedFromHash() {
+    if (location.hash.indexOf("#share=") !== 0 || typeof LZString === "undefined") return false;
+    try {
+      var payload = JSON.parse(LZString.decompressFromEncodedURIComponent(location.hash.slice(7)));
+      if (!payload || typeof payload.c !== "string") return false;
+      editor.value = payload.c;
+      saveFilename.value = payload.n || "shared-document";
+      history.replaceState(null, "", location.pathname + location.search);
+      linkedFileHandle = null;
+      resetUndoStack();
+      setDirty(true);
+      updateDocumentTitle();
+      var banner = document.getElementById("restoreDraftBanner");
+      if (banner) banner.classList.add("hidden");
+      showStatus("Opened shared document — save to keep a copy", "success");
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ----- Outline: drag a heading to move its whole section -----
+  function sectionRange(i) {
+    var startChar = outlineItems[i].index;
+    var level = outlineItems[i].level;
+    var end = editor.value.length;
+    for (var j = i + 1; j < outlineItems.length; j++) {
+      if (outlineItems[j].level <= level) { end = outlineItems[j].index; break; }
+    }
+    return { start: startChar, end: end };
+  }
+
+  function moveSection(from, to) {
+    if (from === to || !outlineItems[from] || !outlineItems[to]) return;
+    var text = editor.value;
+    var src = sectionRange(from);
+    var chunk = text.slice(src.start, src.end);
+    if (chunk.charAt(chunk.length - 1) !== "\n") chunk += "\n";
+    var insertAt = sectionRange(to).start;
+    if (insertAt >= src.start && insertAt <= src.end) return; // dropping into itself
+    var rest = text.slice(0, src.start) + text.slice(src.end);
+    if (insertAt > src.start) insertAt -= (src.end - src.start);
+    saveUndoBeforeProgrammaticChange();
+    editor.value = rest.slice(0, insertAt) + chunk + rest.slice(insertAt);
+    lastSavedValue = editor.value;
+    editor.setSelectionRange(insertAt, insertAt);
+    setDirty(true);
+    renderPreview();
+    updateStatus();
+    showStatus("Section moved", "success");
+  }
+
+  outline.addEventListener("dragstart", function (e) {
+    var li = e.target.closest ? e.target.closest("li[data-outline-index]") : null;
+    if (!li) return;
+    e.dataTransfer.setData("text/plain", li.dataset.outlineIndex);
+    e.dataTransfer.effectAllowed = "move";
+    li.classList.add("dragging");
+  });
+  outline.addEventListener("dragend", function () {
+    outline.querySelectorAll(".dragging, .drop-target").forEach(function (el) {
+      el.classList.remove("dragging", "drop-target");
+    });
+  });
+  outline.addEventListener("dragover", function (e) {
+    var li = e.target.closest ? e.target.closest("li[data-outline-index]") : null;
+    if (!li) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    outline.querySelectorAll(".drop-target").forEach(function (el) { el.classList.remove("drop-target"); });
+    li.classList.add("drop-target");
+  });
+  outline.addEventListener("drop", function (e) {
+    var li = e.target.closest ? e.target.closest("li[data-outline-index]") : null;
+    if (!li) return;
+    e.preventDefault();
+    var from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+    var to = parseInt(li.dataset.outlineIndex, 10);
+    if (!isNaN(from) && !isNaN(to)) moveSection(from, to);
+  });
+
+  // ----- Offline: register the service worker (works on https + localhost) -----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+
+  updateLinkedFileHint();
+
   // Initial render and status
+  loadSharedFromHash();
   renderPreview();
   updateStatus();
   updateDocumentTitle();
+  restoreDocState();
 })();

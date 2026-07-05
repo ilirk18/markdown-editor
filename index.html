@@ -22,10 +22,14 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="theme-light.css" />
   <link rel="stylesheet" href="theme-prishtina.css" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self';" />
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" referrerpolicy="no-referrer"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@16.4.1/marked.min.js" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self';" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1a1a1a" />
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="vendor/lz-string.min.js"></script>
+  <script src="vendor/html2pdf.bundle.min.js" defer></script>
 </head>
 <body>
   <script>try{var m=location.search.match(/[?&]theme=(light|dark|prishtina)/);var t=m?m[1]:localStorage.getItem('ilirTheme');if(m)localStorage.setItem('ilirTheme',t);document.body.classList.toggle('theme-light',t==='light');document.body.classList.toggle('theme-prishtina',t==='prishtina');}catch(e){}</script>
@@ -42,7 +46,7 @@
         <div class="panel-content doc-panel">
           <div class="panel-section doc-filename-section">
             <span class="doc-export-heading">Document name</span>
-            <p class="doc-filename-hint">Used when saving or exporting</p>
+            <p class="doc-filename-hint" id="docFilenameHint">Used when saving or exporting</p>
             <input type="text" id="saveFilename" placeholder="document" value="document" class="input-text doc-filename-input" />
           </div>
 
@@ -96,9 +100,37 @@
                   <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">print</span>
                   <span class="doc-export-btn-text">Print</span>
                 </button>
+                <button type="button" id="btnShareLink" class="btn-panel doc-export-btn" title="Copy a link that contains this document (works for small documents)">
+                  <span class="material-symbols-outlined doc-export-icon" aria-hidden="true">share</span>
+                  <span class="doc-export-btn-text">Copy share link</span>
+                </button>
               </div>
             </div>
           </div>
+        </div>
+      </details>
+
+      <details class="control-panel">
+        <summary class="panel-summary">Library</summary>
+        <div class="panel-content library-panel-content">
+          <p class="settings-intro">Documents saved in this browser. Click to load.</p>
+          <button type="button" id="btnLibSave" class="btn-panel doc-action-btn" title="Save the current document to the library">
+            <span class="material-symbols-outlined doc-action-icon" aria-hidden="true">library_add</span>
+            <span class="doc-action-text">Save current to library</span>
+          </button>
+          <input type="text" id="librarySearch" class="input-text library-search" placeholder="Search name or content…" aria-label="Search library" />
+          <ul class="library-list" id="libraryList">
+            <li class="library-empty">No saved documents yet.</li>
+          </ul>
+          <div class="library-backup-row">
+            <button type="button" id="btnLibExport" class="btn-panel btn-sm" title="Download all saved documents as a JSON backup">Export backup</button>
+            <button type="button" id="btnLibImport" class="btn-panel btn-sm" title="Import a JSON backup">Import backup</button>
+            <input type="file" id="libImportFile" accept=".json,application/json" class="doc-file-hidden" aria-label="Import library backup" />
+          </div>
+          <p class="doc-export-group-label library-history-label">Draft history</p>
+          <ul class="library-list draft-history-list" id="draftHistoryList">
+            <li class="library-empty">No snapshots yet.</li>
+          </ul>
         </div>
       </details>
 
@@ -142,6 +174,14 @@
               <input type="checkbox" id="settingScrollLock" />
               <span class="settings-row-label">Lock scroll (split)</span>
             </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingEditorHighlight" />
+              <span class="settings-row-label">Markdown highlighting</span>
+            </label>
+            <label class="settings-row">
+              <input type="checkbox" id="settingTypewriter" />
+              <span class="settings-row-label">Typewriter mode</span>
+            </label>
           </section>
 
           <section class="settings-block" aria-labelledby="settings-goal-heading">
@@ -160,6 +200,10 @@
               <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>O</kbd> Open</li>
               <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>F</kbd> Find</li>
               <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>H</kbd> Replace</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> Commands</li>
+              <li class="shortcut-row"><kbd>Tab</kbd> Next cell / indent list</li>
+              <li class="shortcut-row"><kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> Move line</li>
+              <li class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>6</kbd> Heading</li>
             </ul>
           </section>
 
@@ -216,6 +260,7 @@
         <div class="editor-toolbar-actions" role="group" aria-label="Edit">
           <button type="button" id="btnUndo" class="editor-toolbar-btn" title="Undo (Ctrl+Z)"><span class="material-symbols-outlined" aria-hidden="true">undo</span></button>
           <button type="button" id="btnRedo" class="editor-toolbar-btn" title="Redo (Ctrl+Y)"><span class="material-symbols-outlined" aria-hidden="true">redo</span></button>
+          <button type="button" id="btnCmdPalette" class="editor-toolbar-btn" title="Command palette (Ctrl+Shift+P)"><span class="material-symbols-outlined" aria-hidden="true">terminal</span></button>
         </div>
         <div class="editor-toolbar-outline" role="group" aria-label="Outline">
           <button type="button" id="btnToggleOutline" class="editor-toolbar-btn" title="Outline" aria-label="Open Outline panel" aria-expanded="false" aria-controls="outlinePanel"><span class="material-symbols-outlined" aria-hidden="true">list</span></button>
@@ -268,6 +313,7 @@
                 <button type="button" class="btn-panel btn-sm fmt-btn" data-wrap="![]()" title="Image" aria-label="Image"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">image</span></button>
               </div>
               <div class="format-toolbar format-toolbar-find" role="group" aria-label="Find">
+                <button type="button" id="btnFormatTable" class="btn-panel btn-sm fmt-btn" title="Format table (align columns)" aria-label="Format table"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">table_view</span></button>
                 <button type="button" id="btnFindInBar" class="btn-panel btn-sm fmt-btn" title="Find (Ctrl+F)" aria-label="Find"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">search</span></button>
                 <button type="button" id="btnReplaceInBar" class="btn-panel btn-sm fmt-btn" title="Find and replace (Ctrl+H)" aria-label="Find and replace"><span class="material-symbols-outlined fmt-icon" aria-hidden="true">find_replace</span></button>
               </div>
@@ -275,7 +321,8 @@
               <button type="button" class="editor-format-bar-arrow editor-format-bar-next" aria-label="Next format tools" title="Next"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></button>
             </div>
             <div class="editor-textarea-wrap">
-              <textarea class="editor-textarea" id="editor" placeholder="# Hello&#10;&#10;Write markdown here..."></textarea>
+              <pre class="editor-highlight" id="editorHighlight" aria-hidden="true"></pre>
+              <textarea class="editor-textarea" id="editor" placeholder="# Hello&#10;&#10;Write markdown here..." spellcheck="true"></textarea>
             </div>
           </div>
         </div>
@@ -351,6 +398,14 @@
         <button type="button" id="pdfPreviewCancel" class="btn-panel">Cancel</button>
         <button type="button" id="pdfPreviewSave" class="btn-panel btn-primary">Save as PDF</button>
       </div>
+    </div>
+  </div>
+
+  <div id="cmdPalette" class="cmd-palette hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmd-palette-backdrop" id="cmdPaletteBackdrop"></div>
+    <div class="cmd-palette-box">
+      <input type="text" id="cmdPaletteInput" class="cmd-palette-input" placeholder="Type a command…" aria-label="Search commands" autocomplete="off" spellcheck="false" />
+      <ul class="cmd-palette-list" id="cmdPaletteList" role="listbox"></ul>
     </div>
   </div>
 
